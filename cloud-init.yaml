@@ -1,0 +1,48 @@
+#cloud-config
+
+# Update package database
+package_update: true
+package_upgrade: true
+
+# Install required packages
+packages:
+  - curl
+  - git
+  - htop
+  - ufw
+  - mumble-server
+
+# Create users
+users:
+  - name: murmur
+    system: true
+    shell: /bin/false
+    home: /var/lib/mumble-server
+    groups: mumble-server
+
+# Configure firewall
+runcmd:
+  # Configure firewall
+  - ufw allow ssh
+  - ufw --force enable
+  
+  # Update and upgrade packages
+  - apt update -y && apt upgrade -y
+
+  # Configure Murmur
+  - systemctl stop mumble-server
+  - mkdir -p /etc/mumble-server
+  - mkdir -p /var/lib/mumble-server
+  - mkdir -p /var/log/mumble-server
+  - chown -R mumble-server:mumble-server /var/lib/mumble-server
+  - chown -R mumble-server:mumble-server /var/log/mumble-server
+
+  # Start and enable Murmur
+  - systemctl enable mumble-server
+  - systemctl start mumble-server
+
+# Final commands after everything is set up
+final_message: |
+  Murmur server setup complete!
+  Your Murmur server is ready at: YOUR_DROPLET_IP:64738
+  Connect using any Mumble client.

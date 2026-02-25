@@ -1,0 +1,30 @@
+name: Deploy Murmur Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.DO_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Make script executable
+        run: chmod +x inflate_murmur.sh
+
+      - name: Run deployment script
+        run: ./inflate_murmur.sh -k ${{ secrets.DO_SSH_KEY_ID }} -x ~/.ssh/id_ed25519 -n ${{ vars.DROPLET_NAME }} -i ${{ vars.IMAGE }} -s ${{ vars.SIZE }} -r ${{ vars.REGION }} -c cloud-init.yaml -d mumble-server.sqlite -p ${{ vars.PROJECT_ID }} -m ${{ vars.DOMAIN }} -e ${{ vars.EMAIL }} -o ${{ secrets.SSH_PORT }} -l ${{ secrets.MUMBLE_PORT }} -t ${{ vars.TAG_APPEND }} -v
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}

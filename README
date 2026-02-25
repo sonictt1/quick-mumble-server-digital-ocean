@@ -1,0 +1,37 @@
+# My Mumble Server Automation
+
+A simultaneously simple and complicated script to inflate a [Mumble](https://www.mumble.info/) server on the [Digital Ocean](https://digitalocean.com/) platform. 
+
+A personal project I'm making public for the benefit of others.
+
+Since code that interacts directly with infrasctrure can be so uniquely catastrophic when compromised, this repository is not accepting pull requests. Feel free to fork and modify as much as you like in your own space!
+
+You can download the `.sh` files and run them by hand, fork the project and run your own Github Actions, or do something else with the files!
+
+This project is available under the GPL 3.0 (GNU General Public License).
+
+Usage/Help Message:
+```
+Usage: ./inflate_murmur.sh [OPTIONS]
+
+Options:
+  -n, --name <name>         Droplet name (default: murmur-server)
+  -i, --image <image>       Droplet image (default: ubuntu-22-04-x64)
+  -s, --size <size>         Droplet size (default: s-1vcpu-1gb)
+  -r, --region <region>     Droplet region (default: nyc1)
+  -k, --ssh-key <key-id>    SSH key ID (required)
+  -x, --identity <file>     SSH identity file (optional)
+  -c, --cloud-init <file>   Cloud-init file (default: cloud-init.yaml)
+  -d, --database <file>     SQLite database file to upload (optional)
+  -p, --project <project>   Project ID (default: sonictt1)
+  -m, --domain <domain>     Domain name managed by DigitalOcean. Creates 'murmur.' subdomain (optional)
+  -v, --verbose             Enable verbose output (optional)
+  -h, --help                Show this help message
+
+Examples:
+  ./inflate_murmur.sh --ssh-key 12345678
+  ./inflate_murmur.sh -k 12345678 -n my-server -r sfo3 -s s-2vcpu-2gb
+  ./inflate_murmur.sh -k 12345678 -d ./my-server.sqlite
+  ./inflate_murmur.sh -k 12345678 -x ~/.ssh/id_ed25519 -d ./backup.sqlite
+  ./inflate_murmur.sh -k 12345678 -m example.com -v
+```
