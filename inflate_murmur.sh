@@ -2,34 +2,34 @@
 
 # Function to display usage
 usage() {
-    echo "  --mumble-ini <file>       Path to mumble-server.ini file (optional)"
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -n, --name <name>         Droplet name (default: murmur-server)"
-    echo "  -i, --image <image>       Droplet image (default: ubuntu-22-04-x64)"
-    echo "  -s, --size <size>         Droplet size (default: s-1vcpu-1gb)"
-    echo "  -r, --region <region>     Droplet region (default: nyc1)"
-    echo "  -k, --ssh-key <key-id>    SSH key ID (required)"
-    echo "  -x, --identity <file>     SSH identity file (optional)"
-    echo "  -o, --ssh-port <port>     SSH port (default: 22)"
-    echo "  -d, --database <file>     SQLite database file to upload (optional)"
-    echo "  -p, --project-id <project>   Project ID to assign the droplet to (required)"
-    echo "  -m, --domain <domain>     Domain name managed by DigitalOcean. Creates 'murmur.' subdomain (optional)"
-    echo "  -e, --email <email>       Email address for Let's Encrypt SSL certificate (required for SSL)"
-    echo "  -l, --mumble-port <port>  Mumble server port (default: 64738)"
-    echo "  -t, --tags <tags>         Additional comma-separated tags to append to droplet (optional)"
-        echo "  --reserved-ip <ip>        Reserved IP to assign to droplet (optional)"
-    echo "  -a, --admin <name>        Admin account name (default: admin)"
-    echo "  -v, --verbose             Enable verbose output (optional)"
-    echo "  -h, --help                Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0 --ssh-key 12345678"
-    echo "  $0 -k 12345678 -n my-server -r sfo3 -s s-2vcpu-2gb"
-    echo "  $0 -k 12345678 -d ./my-server.sqlite"
-    echo "  $0 -k 12345678 -x ~/.ssh/id_ed25519 -d ./backup.sqlite"
-    echo "  $0 -k 12345678 -m example.com -e user@example.com -o 2222 -t custom1,custom2 -a myadmin -v"
+    # echo "  --mumble-ini <file>       Path to mumble-server.ini file (optional)"
+    # echo "Usage: $0 [OPTIONS]"
+    # echo ""
+    # echo "Options:"
+    # echo "  -n, --name <name>         Droplet name (default: murmur-server)"
+    # echo "  -i, --image <image>       Droplet image (default: ubuntu-22-04-x64)"
+    # echo "  -s, --size <size>         Droplet size (default: s-1vcpu-1gb)"
+    # echo "  -r, --region <region>     Droplet region (default: nyc1)"
+    # echo "  -k, --ssh-key <key-id>    SSH key ID (required)"
+    # echo "  -x, --identity <file>     SSH identity file (optional)"
+    # echo "  -o, --ssh-port <port>     SSH port (default: 22)"
+    # echo "  -d, --database <file>     SQLite database file to upload (optional)"
+    # echo "  -p, --project-id <project>   Project ID to assign the droplet to (required)"
+    # echo "  -m, --domain <domain>     Domain name managed by DigitalOcean. Creates 'murmur.' subdomain (optional)"
+    # echo "  -e, --email <email>       Email address for Let's Encrypt SSL certificate (required for SSL)"
+    # echo "  -l, --mumble-port <port>  Mumble server port (default: 64738)"
+    # echo "  -t, --tags <tags>         Additional comma-separated tags to append to droplet (optional)"
+        # echo "  --reserved-ip <ip>        Reserved IP to assign to droplet (optional)"
+    # echo "  -a, --admin <name>        Admin account name (default: admin)"
+    # echo "  -v, --verbose             Enable verbose output (optional)"
+    # echo "  -h, --help                Show this help message"
+    # echo ""
+    # echo "Examples:"
+    # echo "  $0 --ssh-key 12345678"
+    # echo "  $0 -k 12345678 -n my-server -r sfo3 -s s-2vcpu-2gb"
+    # echo "  $0 -k 12345678 -d ./my-server.sqlite"
+    # echo "  $0 -k 12345678 -x ~/.ssh/id_ed25519 -d ./backup.sqlite"
+    # echo "  $0 -k 12345678 -m example.com -e user@example.com -o 2222 -t custom1,custom2 -a myadmin -v"
     exit 1
 }
 
@@ -169,26 +169,26 @@ if [ -n "$SSH_IDENTITY_FILE" ]; then
 fi
 
 if [ "$VERBOSE" -eq 1 ]; then
-    echo "[VERBOSE] Creating Murmur server droplet with the following configuration:"
-    echo "  Name: $DROPLET_NAME"
-    echo "  Image: $IMAGE"
-    echo "  Size: $SIZE"
-    echo "  Region: $REGION"
-    echo "  SSH Key ID: $SSH_KEY_ID"
-    echo "  SSH Identity: ${SSH_IDENTITY_FILE:-default}"
-    echo "  Database file: ${DATABASE_FILE:-none (will create new)}"
-    echo "  Email: ${EMAIL:-none (required for SSL)}"
-    echo "  Project ID: ${PROJECT_ID:-none (required for project association)}"
-    echo "  Mumble Port: ${MUMBLE_PORT:-64738}"
-    echo "  SSH Port: ${ssh_port:-22}"
-    echo "  Tags To Append: ${TAG_APPEND:-'<none>'}"
-    echo "  Admin Account name: ${ADMIN_NAME:-admin}"
-    echo "  Domain: ${DOMAIN:-none (required for SSL)}"
-    echo "  Mumble INI File: ${MUMBLE_INI_FILE}"
-    echo "  Verbose: enabled"
-    echo ""
+    # echo "[VERBOSE] Creating Murmur server droplet with the following configuration:"
+    # echo "  Name: $DROPLET_NAME"
+    # echo "  Image: $IMAGE"
+    # echo "  Size: $SIZE"
+    # echo "  Region: $REGION"
+    # echo "  SSH Key ID: $SSH_KEY_ID"
+    # echo "  SSH Identity: ${SSH_IDENTITY_FILE:-default}"
+    # echo "  Database file: ${DATABASE_FILE:-none (will create new)}"
+    # echo "  Email: ${EMAIL:-none (required for SSL)}"
+    # echo "  Project ID: ${PROJECT_ID:-none (required for project association)}"
+    # echo "  Mumble Port: ${MUMBLE_PORT:-64738}"
+    # echo "  SSH Port: ${ssh_port:-22}"
+    # echo "  Tags To Append: ${TAG_APPEND:-'<none>'}"
+    # echo "  Admin Account name: ${ADMIN_NAME:-admin}"
+    # echo "  Domain: ${DOMAIN:-none (required for SSL)}"
+    # echo "  Mumble INI File: ${MUMBLE_INI_FILE}"
+    # echo "  Verbose: enabled"
+    # echo ""
 else
-    echo "Mumble voice chat server creation starting... This might take several minutes."
+    # echo "Mumble voice chat server creation starting... This might take several minutes."
 fi
 
 # Create a Murmur server droplet
@@ -218,10 +218,10 @@ if [ -n "$RESERVED_IP" ]; then
 fi
 
 
-if [ "$VERBOSE" -eq 1 ]; then
-    echo "[VERBOSE] Droplet IP before script sleeps: $DROPLET_IP"
-    echo "[VERBOSE] Adding droplet to project: $PROJECT_ID"
-fi
+# if [ "$VERBOSE" -eq 1 ]; then
+#     # echo "[VERBOSE] Droplet IP before script sleeps: $DROPLET_IP"
+#     # echo "[VERBOSE] Adding droplet to project: $PROJECT_ID"
+# fi
 
 # Assign droplet to project
 doctl projects resources assign $PROJECT_ID --resource "do:droplet:$DROPLET_ID" > /dev/null
@@ -230,18 +230,18 @@ for i in {1..30}; do
     if ssh $SSH_OPTS root@$DROPLET_IP "echo 'SSH ready'" 2>/dev/null; then
         break
     fi
-    echo "  Attempt $i/30: SSH not ready yet, waiting 5 seconds..."
+    # echo "  Attempt $i/30: SSH not ready yet, waiting 5 seconds..."
     sleep 5
 done
 
-echo "Murmur server droplet created successfully!"
+# echo "Murmur server droplet created successfully!"
 
 # Upload and install the conf file
 # if [ -n "$MUMBLE_INI_FILE" ]; then
     scp $SSH_OPTS "$MUMBLE_INI_FILE" root@$DROPLET_IP:/tmp/mumble-server.ini
 # fi
     
-echo "Installing database and restarting Murmur..."
+# echo "Installing database and restarting Murmur..."
 ssh $SSH_OPTS root@$DROPLET_IP << EOF
     apt update -y -o Dpkg::Options::="--force-confold"
     UCF_FORCE_CONFFOLD=1 apt upgrade -y -o Dpkg::Options::="--force-confold"
@@ -266,10 +266,10 @@ EOF
 # Upload database file if provided
 if [ -n "$DATABASE_FILE" ]; then
     if [ "$VERBOSE" -eq 1 ]; then
-        echo "[VERBOSE] Uploading database file..."
-        echo "[VERBOSE] Waiting for SSH to be available..."
-        echo "[VERBOSE] Using SSH options: $SSH_OPTS"
-        echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
+        # echo "[VERBOSE] Uploading database file..."
+        # echo "[VERBOSE] Waiting for SSH to be available..."
+        # echo "[VERBOSE] Using SSH options: $SSH_OPTS"
+        # echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
     fi
     scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
@@ -282,7 +282,7 @@ if [ -n "$DATABASE_FILE" ]; then
 EOF
 fi
 
-    echo "Database uploaded, ini file updated, and Murmur restarted!"
+    # echo "Database uploaded, ini file updated, and Murmur restarted!"
 
 ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Configure SSH
@@ -331,14 +331,18 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     systemctl restart ssh
 EOF
 
-echo "Admin user created and root login disabled successfully."
+# echo "Admin user created and root login disabled successfully."
 
 SSH_OPTS="$SSH_OPTS -p $ssh_port"
 
-echo "Your Murmur server will be available at: $DROPLET_IP:$MUMBLE_PORT"
+# echo "Your Murmur server will be available at: $DROPLET_IP:$MUMBLE_PORT"
 
 # Schedule a system restart to complete setup
 ssh $SSH_OPTS -p $ssh_port $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
 
-echo "Server Rebooting"
+# echo "Server Rebooting"
+
+# Print droplet ID as the final, machine-parseable output so callers
+# (for example CI workflows) can capture it reliably.
+echo "$DROPLET_ID"
 
