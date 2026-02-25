@@ -1,0 +1,56 @@
+name: Deploy Murmur and obtain Let's Encrypt certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh_port:
+        description: 'SSH port'
+        required: true
+        default: '22'
+      admin_username:
+        description: 'Admin SSH username'
+        required: true
+        default: 'root'
+      ssh_identity_file:
+        description: 'Path to SSH identity file on the runner (or secret path)'
+        required: true
+      domain:
+        description: 'Domain (example.com)'
+        required: true
+      email:
+        description: 'Email for Lets Encrypt registration'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x ./reserve_ip_dns_record.sh || true
+          chmod +x ./inflate_murmur.sh || true
+          chmod +x ./letsencrypt_cert_script.sh || true
+
+      - name: Reserve IP and DNS
+        id: reserve
+        run: |
+          set -euo pipefail
+          echo "Running reserve_ip_dns_record.sh..."
+          RESERVED_IP=$(./reserve_ip_dns_record.sh)
+          echo "reserved_ip=$RESERVED_IP" >> $GITHUB_OUTPUT
+
+      - name: Inflate Murmur
+        id: inflate
+        run: |
+          set -euo pipefail
+          echo "Inflating murmur with reserved IP: ${RESERVED_IP:-${{ steps.reserve.outputs.reserved_ip }}}"
+          DROPLET_ID=$(./inflate_murmur.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --admin-username "${{ github.event.inputs.admin_username }}" --ssh-identity-file "${{ github.event.inputs.ssh_identity_file }}" --ssh-port "${{ github.event.inputs.ssh_port }}")
+          echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+
+      - name: Obtain Let's Encrypt certificate
+        run: |
+          set -euo pipefail
+          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
+          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "${{ github.event.inputs.ssh_identity_file }}" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
