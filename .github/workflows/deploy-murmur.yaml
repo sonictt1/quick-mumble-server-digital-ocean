@@ -34,9 +34,7 @@ jobs:
       - name: Configure doctl (non-interactive)
         run: |
           set -euo pipefail
-          echo "DOCTL_ACCESS_TOKEN=$DOCTL_ACCESS_TOKEN" >> $GITHUB_ENV
-
-      # doctl will read DIGITALOCEAN_ACCESS_TOKEN / DOCTL_ACCESS_TOKEN from the job environment; no interactive auth step required
+          doctl auth init --access-token "$DOCTL_ACCESS_TOKEN"
 
       - name: Make scripts executable
         run: |
