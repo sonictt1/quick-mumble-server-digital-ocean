@@ -11,9 +11,7 @@ on:
         description: 'Admin SSH username'
         required: true
         default: 'root'
-      ssh_identity_file:
-        description: 'Path to SSH identity file on the runner (or secret path)'
-        required: true
+      # SSH identity is provided via secret DO_SSH_PRIVATE_KEY
       domain:
         description: 'Domain (example.com)'
         required: true
@@ -33,6 +31,14 @@ jobs:
           chmod +x ./inflate_murmur.sh || true
           chmod +x ./letsencrypt_cert_script.sh || true
 
+      - name: Setup SSH identity from secret
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/do_ssh_key <<'EOF'
+          ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          EOF
+          chmod 600 ~/.ssh/do_ssh_key
+
       - name: Reserve IP and DNS
         id: reserve
         run: |
@@ -46,11 +52,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "Inflating murmur with reserved IP: ${RESERVED_IP:-${{ steps.reserve.outputs.reserved_ip }}}"
-          DROPLET_ID=$(./inflate_murmur.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --admin-username "${{ github.event.inputs.admin_username }}" --ssh-identity-file "${{ github.event.inputs.ssh_identity_file }}" --ssh-port "${{ github.event.inputs.ssh_port }}")
+          DROPLET_ID=$(./inflate_murmur.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --admin-username "${{ github.event.inputs.admin_username }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --ssh-key-id "${{ secrets.DO_SSH_KEY_ID }}")
           echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
 
       - name: Obtain Let's Encrypt certificate
         run: |
           set -euo pipefail
           echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
-          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "${{ github.event.inputs.ssh_identity_file }}" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
+          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
