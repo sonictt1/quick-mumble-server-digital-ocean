@@ -30,6 +30,13 @@ jobs:
           set -euo pipefail
           sudo snap install doctl --classic || true
 
+      - name: Authenticate doctl
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          doctl auth init -t "$DIGITALOCEAN_ACCESS_TOKEN"
+
       - name: Make scripts executable
         run: |
           chmod +x ./reserve_ip_dns_record.sh || true
