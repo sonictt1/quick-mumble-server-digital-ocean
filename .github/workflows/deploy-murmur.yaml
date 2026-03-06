@@ -11,7 +11,6 @@ on:
         description: 'Admin SSH username'
         required: true
         default: 'root'
-      # SSH identity is provided via secret DO_SSH_PRIVATE_KEY
       domain:
         description: 'Domain (example.com)'
         required: true
@@ -32,6 +31,11 @@ jobs:
           set -euo pipefail
           sudo snap install doctl --classic || true
 
+      - name: Authenticate doctl
+        run: |
+          set -euo pipefail
+          doctl auth init -t "$DIGITALOCEAN_ACCESS_TOKEN"
+
       - name: Make scripts executable
         run: |
           chmod +x ./reserve_ip_dns_record.sh || true
@@ -40,6 +44,7 @@ jobs:
 
       - name: Setup SSH identity from secret
         run: |
+          # The SSH private key is provided via the repository secret `DO_SSH_PRIVATE_KEY`.
           mkdir -p ~/.ssh
           cat > ~/.ssh/do_ssh_key <<'EOF'
           ${{ secrets.DO_SSH_PRIVATE_KEY }}
