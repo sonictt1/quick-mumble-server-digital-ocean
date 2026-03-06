@@ -26,15 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install doctl
-        run: |
-          set -euo pipefail
-          sudo snap install doctl --classic || true
-
-      - name: Configure doctl (non-interactive)
-        run: |
-          set -euo pipefail
-          doctl auth init --access-token "$DOCTL_ACCESS_TOKEN"
+      - name: Install and authenticate doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Make scripts executable
         run: |
