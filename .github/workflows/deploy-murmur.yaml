@@ -22,7 +22,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      DOCTL_KEY: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      DOCTL_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           sudo snap install doctl --classic || true
 
-      # doctl will read DOCTL_KEY from the job environment; no interactive auth step required
+      # doctl will read DOCTL_ACCESS_TOKEN from the job environment; no interactive auth step required
 
       - name: Make scripts executable
         run: |
