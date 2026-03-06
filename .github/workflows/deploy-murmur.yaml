@@ -25,6 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install doctl
+        run: |
+          set -euo pipefail
+          sudo snap install doctl --classic || true
+
       - name: Make scripts executable
         run: |
           chmod +x ./reserve_ip_dns_record.sh || true
