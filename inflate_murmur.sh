@@ -305,9 +305,13 @@ fi
 
 ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Configure SSH
-    grep -q "^Port " /etc/ssh/sshd_config && \
-    sed -i "s/^Port .*/Port $ssh_port/" /etc/ssh/sshd_config || \
-    echo "Port $ssh_port" >> /etc/ssh/sshd_config
+    # Ensure sshd listens on port 22 and the configured port (allow multiple Port entries)
+    if ! grep -q "^Port 22" /etc/ssh/sshd_config 2>/dev/null; then
+        echo "Port 22" >> /etc/ssh/sshd_config
+    fi
+    if ! grep -q "^Port $ssh_port" /etc/ssh/sshd_config 2>/dev/null; then
+        echo "Port $ssh_port" >> /etc/ssh/sshd_config
+    fi
     
     # Flush existing rules
     iptables -F
@@ -318,8 +322,9 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Allow established/related connections
     iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-    # Allow SSH on specified port
+    # Allow SSH on specified port and also allow port 22 for runner connectivity
     iptables -A INPUT -p tcp --dport $ssh_port -j ACCEPT
+    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
     
     # Allow HTTP and HTTPS for Certbot
     iptables -A INPUT -p tcp --dport 80 -j ACCEPT
