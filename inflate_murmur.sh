@@ -48,6 +48,7 @@ TAG_APPEND=""
 ADMIN_NAME="admin"
 RESERVED_IP=""
 MUMBLE_INI_FILE=""
+PUBLIC_KEY=""
        
 
 ############### I'm just putting the default ports. The more ports we commit to #############
@@ -90,6 +91,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -x|--identity)
             SSH_IDENTITY_FILE="$2"
+            shift 2
+            ;;
+        --ssh-public-key)
+            PUBLIC_KEY="$2"
             shift 2
             ;;
         -d|--database)
@@ -321,20 +326,6 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     usermod -aG sudo $ADMIN_NAME
 
     mkdir -p /home/$ADMIN_NAME/.ssh
-    # Try several common locations for pre-installed SSH authorized_keys
-    if [ -f /root/.ssh/authorized_keys ]; then
-        cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    elif [ -f /home/ubuntu/.ssh/authorized_keys ]; then
-        cp /home/ubuntu/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    elif [ -f /home/debian/.ssh/authorized_keys ]; then
-        cp /home/debian/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    else
-        # Fallback: create empty authorized_keys (droplet should already have the DO key installed)
-        touch /home/$ADMIN_NAME/.ssh/authorized_keys
-    fi
-    chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
-    chmod 700 /home/$ADMIN_NAME/.ssh
-    chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
 
     # Enable passwordless sudo for admin account
     echo "$ADMIN_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$ADMIN_NAME
@@ -358,4 +349,28 @@ ssh $SSH_OPTS -p $ssh_port $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
 # Print droplet ID as the final, machine-parseable output so callers
 # (for example CI workflows) can capture it reliably.
 echo "$DROPLET_ID"
+
+# Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
+if [ -n "$PUBLIC_KEY" ]; then
+    # Pipe the public key to the remote file to avoid complex shell quoting
+' "$PUBLIC_KEY" | ssh $SSH_OPTS root@$DROPLET_IP "mkdir -p /home/$ADMIN_NAME/.ssh && cat > /home/$ADMIN_NAME/.ssh/authorized_keys"
+    printf '%s\n' "$PUBLIC_KEY" | ssh $SSH_OPTS root@$DROPLET_IP "mkdir -p /home/$ADMIN_NAME/.ssh && cat > /home/$ADMIN_NAME/.ssh/authorized_keys"
+    ssh $SSH_OPTS root@$DROPLET_IP "chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh && chmod 700 /home/$ADMIN_NAME/.ssh && chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys"
+else
+    ssh $SSH_OPTS root@$DROPLET_IP <<EOF2
+    # Try several common locations for pre-installed SSH authorized_keys
+    if [ -f /root/.ssh/authorized_keys ]; then
+        cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    elif [ -f /home/ubuntu/.ssh/authorized_keys ]; then
+        cp /home/ubuntu/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    elif [ -f /home/debian/.ssh/authorized_keys ]; then
+        cp /home/debian/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    else
+        touch /home/$ADMIN_NAME/.ssh/authorized_keys
+    fi
+    chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
+    chmod 700 /home/$ADMIN_NAME/.ssh
+    chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
+EOF2
+fi
 

@@ -105,6 +105,7 @@ jobs:
             --identity "$HOME/.ssh/do_ssh_key" \
             --ssh-port "${{ github.event.inputs.ssh_port }}" \
             --ssh-key "${{ secrets.DO_SSH_KEY_ID }}" \
+            --ssh-public-key "${{ vars.SSH_PUBLIC_KEY }}" \
             --domain "${{ github.event.inputs.domain }}" \
             --mumble-ini ./mumble-server.ini \
             --database ./mumble-server.sqlite \
