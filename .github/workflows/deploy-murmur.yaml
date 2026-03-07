@@ -6,7 +6,7 @@ on:
       ssh_port:
         description: 'SSH port'
         required: true
-        default: '22'
+        default: '44'
       server_image:
         description: 'Droplet image (e.g., ubuntu-22-04-x64)'
         required: false
@@ -26,7 +26,7 @@ on:
       admin_username:
         description: 'Admin SSH username'
         required: true
-        default: 'admin'
+        default: 'sonic'
       domain:
         description: 'Domain (example.com)'
         required: true

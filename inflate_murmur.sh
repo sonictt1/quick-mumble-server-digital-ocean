@@ -353,7 +353,6 @@ echo "$DROPLET_ID"
 # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
 if [ -n "$PUBLIC_KEY" ]; then
     # Pipe the public key to the remote file to avoid complex shell quoting
-' "$PUBLIC_KEY" | ssh $SSH_OPTS root@$DROPLET_IP "mkdir -p /home/$ADMIN_NAME/.ssh && cat > /home/$ADMIN_NAME/.ssh/authorized_keys"
     printf '%s\n' "$PUBLIC_KEY" | ssh $SSH_OPTS root@$DROPLET_IP "mkdir -p /home/$ADMIN_NAME/.ssh && cat > /home/$ADMIN_NAME/.ssh/authorized_keys"
     ssh $SSH_OPTS root@$DROPLET_IP "chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh && chmod 700 /home/$ADMIN_NAME/.ssh && chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys"
 else
