@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running reserve_ip_dns_record.sh..."
-          RESERVED_IP=$(./reserve_ip_dns_record.sh)
+          RESERVED_IP=$(./reserve_ip_dns_record.sh --domain "${{ github.event.inputs.domain }}" --region "${{ github.event.inputs.region }}")
           echo "reserved_ip=$RESERVED_IP" >> $GITHUB_OUTPUT
 
       - name: Generate UTC timestamp
