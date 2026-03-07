@@ -93,7 +93,9 @@ jobs:
           SERVER_NAME='${{ github.event.inputs.server_name }}'
           MUMBLE_PORT='${{ github.event.inputs.mumble_server_port }}'
 
-          DROPLET_ID=$(./inflate_murmur.sh \
+          OUTFILE=/tmp/inflate_output.txt
+          # Run script and capture stdout+stderr for debugging; extract last line as droplet ID on success
+          if ./inflate_murmur.sh \
             --region "${{ github.event.inputs.region }}" \
             --image "${{ github.event.inputs.server_image }}" \
             --size "${{ github.event.inputs.server_size }}" \
@@ -107,9 +109,14 @@ jobs:
             --mumble-ini ./mumble-server.ini \
             --database ./mumble-server.sqlite \
             --mumble-port "$MUMBLE_PORT" \
-            --tags "$TAGS"
-          )
-          echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+            --tags "$TAGS" >"$OUTFILE" 2>&1; then
+            DROPLET_ID=$(tail -n 1 "$OUTFILE")
+            echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+          else
+            echo "inflate_murmur.sh failed; output follows:" >&2
+            sed -n '1,400p' "$OUTFILE" >&2 || true
+            exit 1
+          fi
 
       - name: Obtain Let's Encrypt certificate
         run: |
