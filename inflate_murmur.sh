@@ -254,21 +254,32 @@ done
 ssh $SSH_OPTS root@$DROPLET_IP << EOF
     apt update -y -o Dpkg::Options::="--force-confold"
     UCF_FORCE_CONFFOLD=1 apt upgrade -y -o Dpkg::Options::="--force-confold"
-    apt install -y mumble-server -o Dpkg::Options::="--force-confold"
+    # Ensure universe repository is enabled (mumble-server may live in universe)
+    apt-get install -y software-properties-common || true
+    add-apt-repository -y universe || true
+    apt update -y
+    apt install -y mumble-server -o Dpkg::Options::="--force-confold" || true
+
     mkdir -p /etc/mumble-server
     mkdir -p /var/lib/mumble-server
     mkdir -p /var/log/mumble-server
-    chown -R mumble-server:mumble-server /var/lib/mumble-server
-    chown -R mumble-server:mumble-server /var/log/mumble-server
-    systemctl stop mumble-server
-    
-    cp /tmp/mumble-server.ini /etc/mumble-server.ini
+
+    # Ensure mumble-server system user exists before chown
+    if ! id -u mumble-server >/dev/null 2>&1; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin mumble-server || true
+    fi
+
+    chown -R mumble-server:mumble-server /var/lib/mumble-server || true
+    chown -R mumble-server:mumble-server /var/log/mumble-server || true
+    systemctl stop mumble-server || true
+
+    cp /tmp/mumble-server.ini /etc/mumble-server/mumble-server.ini
     ls /tmp/
-    chown mumble-server /etc/mumble-server/mumble-server.ini
-    chmod 644 /etc/mumble-server/mumble-server.ini
+    chown mumble-server /etc/mumble-server/mumble-server.ini || true
+    chmod 644 /etc/mumble-server/mumble-server.ini || true
     ls /etc/mumble-server/
-    sed -i "s/^port=.*/port=$MUMBLE_PORT/" /etc/mumble-server.ini
-    systemctl start mumble-server
+    sed -i "s/^port=.*/port=$MUMBLE_PORT/" /etc/mumble-server/mumble-server.ini || true
+    systemctl start mumble-server || true
     rm /tmp/mumble-server.ini
 EOF
 
