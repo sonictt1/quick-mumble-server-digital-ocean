@@ -321,7 +321,17 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     usermod -aG sudo $ADMIN_NAME
 
     mkdir -p /home/$ADMIN_NAME/.ssh
-    cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    # Try several common locations for pre-installed SSH authorized_keys
+    if [ -f /root/.ssh/authorized_keys ]; then
+        cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    elif [ -f /home/ubuntu/.ssh/authorized_keys ]; then
+        cp /home/ubuntu/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    elif [ -f /home/debian/.ssh/authorized_keys ]; then
+        cp /home/debian/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+    else
+        # Fallback: create empty authorized_keys (droplet should already have the DO key installed)
+        touch /home/$ADMIN_NAME/.ssh/authorized_keys
+    fi
     chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
     chmod 700 /home/$ADMIN_NAME/.ssh
     chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
