@@ -30,9 +30,11 @@ on:
       domain:
         description: 'Domain (example.com)'
         required: true
+        default: 'sonictt1.com'
       email:
         description: 'Email for Lets Encrypt registration'
         required: true
+        default: 'certbot+sonictt1@proton.me'
       region:
         description: 'DigitalOcean region (e.g., nyc3, sfo2)'
         required: true
