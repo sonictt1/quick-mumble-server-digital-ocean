@@ -120,12 +120,12 @@ jobs:
           fi
           sleep 30 # Wait a bit for the droplet to be fully ready before SSH attempts
 
-      - name: SSH debug connection
-        run: |
-          set -euo pipefail
-          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
-          SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
-          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
+      # - name: SSH debug connection
+      #   run: |
+      #     set -euo pipefail
+      #     echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
+      #     SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
+      #     /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
 
       - name: Obtain Let's Encrypt certificate
         run: |
