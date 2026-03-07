@@ -40,19 +40,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z "$SSH_IDENTITY_FILE" || -z "$SSH_PORT" ]]; then
+if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z "$SSH_PORT" ]]; then
     echo "RESERVED_IP=$RESERVED_IP"
     echo "DROPLET_ID=$DROPLET_ID"
     echo "DOMAIN=$DOMAIN"
     echo "EMAIL=$EMAIL"
-    echo "SSH_IDENTITY_FILE=$SSH_IDENTITY_FILE"
+    echo "SSH_IDENTITY_FILE=${SSH_IDENTITY_FILE:-<none>}"
     echo "SSH_PORT=$SSH_PORT"
-    echo "Usage: $0 --reserved-ip <RESERVED_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> --ssh-identity-file <SSH_IDENTITY_FILE> --ssh-port <SSH_PORT>"
+    echo "Usage: $0 --reserved-ip <RESERVED_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> [--ssh-identity-file <SSH_IDENTITY_FILE>] --ssh-port <SSH_PORT>"
     exit 1
 fi
 
 DROPLET_IP="$RESERVED_IP"
-SSH_OPTS="-i $SSH_IDENTITY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no"
+# Prefer SSH agent; only add identity file option if provided
+SSH_OPTS="-p $SSH_PORT -o StrictHostKeyChecking=no"
+if [ -n "${SSH_IDENTITY_FILE:-}" ]; then
+    SSH_OPTS="-i $SSH_IDENTITY_FILE $SSH_OPTS"
+fi
 
 ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
     sudo apt install -yq certbot
