@@ -81,6 +81,16 @@ jobs:
           set -euo pipefail
           echo "timestamp=$(date -u +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
 
+      - name: Ensure mumble database file exists
+        run: |
+          set -euo pipefail
+          if [ ! -f ./mumble-server.sqlite ]; then
+            echo "Creating empty ./mumble-server.sqlite (script only requires presence)"
+            touch ./mumble-server.sqlite
+          else
+            echo "mumble-server.sqlite already present"
+          fi
+
       - name: Inflate Murmur
         id: inflate
         run: |
