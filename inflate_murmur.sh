@@ -223,8 +223,12 @@ fi
 #     # echo "[VERBOSE] Adding droplet to project: $PROJECT_ID"
 # fi
 
-# Assign droplet to project
-doctl projects resources assign $PROJECT_ID --resource "do:droplet:$DROPLET_ID" > /dev/null
+# Assign droplet to project if `PROJECT_ID` was provided
+if [ -n "${PROJECT_ID:-}" ]; then
+    doctl projects resources assign "$PROJECT_ID" --resource "do:droplet:$DROPLET_ID" > /dev/null
+else
+    echo "PROJECT_ID not set; skipping project assignment"
+fi
 # Wait for SSH to be ready (up to 5 minutes)
 for i in {1..30}; do
     if ssh $SSH_OPTS root@$DROPLET_IP "echo 'SSH ready'" 2>/dev/null; then
@@ -266,10 +270,10 @@ EOF
 # Upload database file if provided
 if [ -n "$DATABASE_FILE" ]; then
     if [ "$VERBOSE" -eq 1 ]; then
-        # echo "[VERBOSE] Uploading database file..."
-        # echo "[VERBOSE] Waiting for SSH to be available..."
-        # echo "[VERBOSE] Using SSH options: $SSH_OPTS"
-        # echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
+        echo "[VERBOSE] Uploading database file..."
+        echo "[VERBOSE] Waiting for SSH to be available..."
+        echo "[VERBOSE] Using SSH options: $SSH_OPTS"
+        echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
     fi
     scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
@@ -281,7 +285,6 @@ if [ -n "$DATABASE_FILE" ]; then
         rm /tmp/mumble-server.sqlite
 EOF
 fi
-
     # echo "Database uploaded, ini file updated, and Murmur restarted!"
 
 ssh $SSH_OPTS root@$DROPLET_IP <<EOF
