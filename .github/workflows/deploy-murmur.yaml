@@ -85,13 +85,30 @@ jobs:
         id: inflate
         run: |
           set -euo pipefail
-          echo "Inflating murmur with reserved IP: ${RESERVED_IP:-${{ steps.reserve.outputs.reserved_ip }}}"
-          # Use timestamp generated in prior step and determine mumble port
-          TAGS="timestamp-${{ steps.ts.outputs.timestamp }}"
-          SERVER_NAME="${{ github.event.inputs.server_name }}"
-          MUMBLE_PORT="${{ github.event.inputs.mumble_server_port }}"
+          echo "Inflating murmur with reserved IP: ${{ steps.reserve.outputs.reserved_ip }}"
+          # Assign GitHub inputs/outputs into shell variables first (prevents literal '$' passing)
+          RES_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          TS='${{ steps.ts.outputs.timestamp }}'
+          TAGS="timestamp-$TS"
+          SERVER_NAME='${{ github.event.inputs.server_name }}'
+          MUMBLE_PORT='${{ github.event.inputs.mumble_server_port }}'
 
-          DROPLET_ID=$(./inflate_murmur.sh --region "${{ github.event.inputs.region }}" --image "${{ github.event.inputs.server_image }}" --size "${{ github.event.inputs.server_size }}" --name "$SERVER_NAME" --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --admin "${{ github.event.inputs.admin_username }}" --identity "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --ssh-key "${{ secrets.DO_SSH_KEY_ID }}" --domain "${{ github.event.inputs.domain }}" --mumble-ini ./mumble-server.ini --database ./mumble-server.sqlite --mumble-port "$MUMBLE_PORT" --tags "$TAGS")
+          DROPLET_ID=$(./inflate_murmur.sh \
+            --region "${{ github.event.inputs.region }}" \
+            --image "${{ github.event.inputs.server_image }}" \
+            --size "${{ github.event.inputs.server_size }}" \
+            --name "$SERVER_NAME" \
+            --reserved-ip "$RES_IP" \
+            --admin "${{ github.event.inputs.admin_username }}" \
+            --identity "$HOME/.ssh/do_ssh_key" \
+            --ssh-port "${{ github.event.inputs.ssh_port }}" \
+            --ssh-key "${{ secrets.DO_SSH_KEY_ID }}" \
+            --domain "${{ github.event.inputs.domain }}" \
+            --mumble-ini ./mumble-server.ini \
+            --database ./mumble-server.sqlite \
+            --mumble-port "$MUMBLE_PORT" \
+            --tags "$TAGS"
+          )
           echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
 
       - name: Obtain Let's Encrypt certificate
