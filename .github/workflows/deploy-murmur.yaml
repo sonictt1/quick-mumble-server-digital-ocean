@@ -24,24 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install doctl
-        run: |
-          sudo snap install doctl || true
-          # wait until snap releases the apt lock so future apt-get runs can proceed
-          while sudo lsof /var/lib/dpkg/lock >/dev/null 2>&1 || sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
-
-      - name: Authenticate doctl
-        env:
-          DO_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-        run: |
-          if [ -z "$DO_TOKEN" ]; then
-            echo "Error: DO_TOKEN secret is not set. Add repository secret DO_TOKEN with a valid DigitalOcean token." >&2
-            exit 1
-          fi
-          # export token for non-interactive doctl usage
-          echo "DOCTL_ACCESS_TOKEN=$DO_TOKEN" >> $GITHUB_ENV
-          # Initialize doctl config non-interactively (avoid terminal prompts)
-          doctl auth init -t "$DO_TOKEN" < /dev/null || true
+      - name: Install and authenticate doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Make scripts executable
         run: |
