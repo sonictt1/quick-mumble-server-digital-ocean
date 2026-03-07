@@ -338,6 +338,26 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
 
     mkdir -p /home/$ADMIN_NAME/.ssh
 
+    # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
+    if [ -n "${PUBLIC_KEY:-}" ]; then
+        cat > /home/$ADMIN_NAME/.ssh/authorized_keys <<'PUBKEY'
+${PUBLIC_KEY}
+PUBKEY
+    else
+        if [ -f /root/.ssh/authorized_keys ]; then
+            cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+        elif [ -f /home/ubuntu/.ssh/authorized_keys ]; then
+            cp /home/ubuntu/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+        elif [ -f /home/debian/.ssh/authorized_keys ]; then
+            cp /home/debian/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
+        else
+            touch /home/$ADMIN_NAME/.ssh/authorized_keys
+        fi
+    fi
+    chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
+    chmod 700 /home/$ADMIN_NAME/.ssh
+    chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
+
     # Enable passwordless sudo for admin account
     echo "$ADMIN_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$ADMIN_NAME
     chmod 440 /etc/sudoers.d/$ADMIN_NAME
@@ -361,26 +381,5 @@ ssh $SSH_OPTS -p $ssh_port $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
 # (for example CI workflows) can capture it reliably.
 echo "$DROPLET_ID"
 
-# Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
-if [ -n "$PUBLIC_KEY" ]; then
-    # Pipe the public key to the remote file to avoid complex shell quoting
-    printf '%s\n' "$PUBLIC_KEY" | ssh $SSH_OPTS root@$DROPLET_IP "mkdir -p /home/$ADMIN_NAME/.ssh && cat > /home/$ADMIN_NAME/.ssh/authorized_keys"
-    ssh $SSH_OPTS root@$DROPLET_IP "chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh && chmod 700 /home/$ADMIN_NAME/.ssh && chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys"
-else
-    ssh $SSH_OPTS root@$DROPLET_IP <<EOF2
-    # Try several common locations for pre-installed SSH authorized_keys
-    if [ -f /root/.ssh/authorized_keys ]; then
-        cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    elif [ -f /home/ubuntu/.ssh/authorized_keys ]; then
-        cp /home/ubuntu/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    elif [ -f /home/debian/.ssh/authorized_keys ]; then
-        cp /home/debian/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
-    else
-        touch /home/$ADMIN_NAME/.ssh/authorized_keys
-    fi
-    chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
-    chmod 700 /home/$ADMIN_NAME/.ssh
-    chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
-EOF2
-fi
+# (authorized_keys already provisioned during remote setup block)
 
