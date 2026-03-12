@@ -6,6 +6,10 @@ while [[ $# -gt 0 ]]; do
             DOMAIN="$2"
             shift 2
             ;;
+        --subdomain)
+            SUBDOMAIN="$2"
+            shift 2
+            ;;
         --region)
             REGION="$2"
             shift 2
@@ -30,7 +34,7 @@ if [ -n "$DOMAIN" ]; then
     # send doctl domain create output to stderr so workflow captures only the IP from stdout
     doctl compute domain records create "$DOMAIN" \
       --record-type A \
-      --record-name murmur \
+      --record-name "$SUBDOMAIN" \
       --record-data "$RESERVED_IP" >&2
 fi
 echo "$RESERVED_IP"

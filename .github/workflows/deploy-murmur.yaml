@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running reserve_ip_dns_record.sh..."
-          RESERVED_IP=$(./reserve_ip_dns_record.sh --domain "${{ github.event.inputs.domain }}" --region "${{ github.event.inputs.region }}")
+          RESERVED_IP=$(./reserve_ip_dns_record.sh --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --region "${{ github.event.inputs.region }}")
           echo "Reserved IP: $RESERVED_IP"
           echo "reserved_ip=$RESERVED_IP" >> $GITHUB_OUTPUT
 
