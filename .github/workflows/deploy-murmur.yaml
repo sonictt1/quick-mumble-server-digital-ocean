@@ -114,6 +114,7 @@ jobs:
             --mumble-ini ./mumble-server.ini \
             --database ./mumble-server.sqlite \
             --mumble-port "$MUMBLE_PORT" \
+            --verbose \
             --tags "$TAGS" >"$OUTFILE" 2>&1; then
             DROPLET_ID=$(tail -n 1 "$OUTFILE")
             echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
