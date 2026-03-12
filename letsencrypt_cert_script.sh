@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z "$SSH_IDENTITY_FILE" || -z "$SSH_PORT" || -z "$ADMIN_USERNAME" || -z "$SUBDOMAIN" ]]; then
+# if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z "$SSH_IDENTITY_FILE" || -z "$SSH_PORT" || -z "$ADMIN_USERNAME" || -z "$SUBDOMAIN" ]]; then
     echo "RESERVED_IP=$RESERVED_IP"
     echo "DROPLET_ID=$DROPLET_ID"
     echo "DOMAIN=$DOMAIN"
@@ -54,8 +54,8 @@ if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z
     echo "ADMIN_USERNAME=$ADMIN_USERNAME"
     echo "SUBDOMAIN=$SUBDOMAIN"
     echo "Usage: $0 --reserved-ip <RESERVED_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> --ssh-identity-file <SSH_IDENTITY_FILE> --ssh-port <SSH_PORT> --admin-username <ADMIN_USERNAME> --subdomain <SUBDOMAIN>"
-    exit 1
-fi
+    # exit 1
+# fi
 
 DROPLET_IP="$RESERVED_IP"
 SSH_OPTS="-i $SSH_IDENTITY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no -T"
