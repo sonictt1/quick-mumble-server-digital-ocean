@@ -135,4 +135,4 @@ jobs:
         run: |
           set -euo pipefail
           echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
-          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
+          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
