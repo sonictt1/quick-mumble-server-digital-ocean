@@ -113,7 +113,7 @@ jobs:
             --domain "${{ github.event.inputs.domain }}" \
             --mumble-ini ./mumble-server.ini \
             --database ./mumble-server.sqlite \
-            --mumble-port "$MUMBLE_PORT" \
+            -l "$MUMBLE_PORT" \
             --verbose \
             --tags "$TAGS" >"$OUTFILE" 2>&1; then
             DROPLET_ID=$(tail -n 1 "$OUTFILE")

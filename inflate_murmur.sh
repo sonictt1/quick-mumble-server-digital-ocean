@@ -57,7 +57,7 @@ PUBLIC_KEY=""
 ###############as default in a long-running, 'production' environment #######################
 
 
-MUMBLE_PORT=647383
+# MUMBLE_PORT=64738
 
 # Internal configuration variables
 DB_DESTINATION_PATH="/var/lib/mumble-server"
