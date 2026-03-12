@@ -31,6 +31,10 @@ on:
         description: 'Domain (example.com)'
         required: true
         default: 'sonictt1.com'
+      subdomain:
+        description: 'Subdomain for cert and connecting (e.g., mumble)'
+        required: true
+        default: 'voice'
       email:
         description: 'Email for Lets Encrypt registration'
         required: true
