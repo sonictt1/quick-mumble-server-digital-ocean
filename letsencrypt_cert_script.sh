@@ -70,8 +70,8 @@ ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
 
     sudo certbot certonly --standalone -d "$SUBDOMAIN.$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"
 
-    sudo sed -i "/^sslCert=/c\\sslCert=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/fullchain.pem" "/etc/mumble-server.ini"
-    sudo sed -i "/^sslKey=/c\\sslKey=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/privkey.pem" "/etc/mumble-server.ini"
+    sudo sed -i -E "s|^[[:space:]]*;?sslCert=.*|sslCert=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/fullchain.pem|" "/etc/mumble-server.ini"
+    sudo sed -i -E "s|^[[:space:]]*;?sslKey=.*|sslKey=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/privkey.pem|" "/etc/mumble-server.ini"
 
     sudo systemctl start mumble-server || true
 
