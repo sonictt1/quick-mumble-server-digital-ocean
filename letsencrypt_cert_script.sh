@@ -60,7 +60,7 @@ done
 DROPLET_IP="$RESERVED_IP"
 SSH_OPTS="-i $SSH_IDENTITY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no -T"
 
-ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<'EOF'
+ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
     # Make apt non-interactive for automation
     export DEBIAN_FRONTEND=noninteractive
     export DEBIAN_PRIORITY=critical
