@@ -337,6 +337,11 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Drop all other incoming traffic
     iptables -A INPUT -j DROP
 
+    # Persist firewall rules: prefer nftables (nf_tables backend)
+    nft list ruleset | tee /etc/nftables.conf >/dev/null
+    systemctl enable nftables.service || true
+    systemctl restart nftables.service || true
+
     # Add admin user and disable root login
     adduser --disabled-password --gecos "" $ADMIN_NAME
     usermod -aG sudo $ADMIN_NAME
@@ -346,8 +351,8 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
     if [ -n "${PUBLIC_KEY:-}" ]; then
         cat > /home/$ADMIN_NAME/.ssh/authorized_keys <<'PUBKEY'
-${PUBLIC_KEY}
-PUBKEY
+    ${PUBLIC_KEY}
+    PUBKEY
     else
         if [ -f /root/.ssh/authorized_keys ]; then
             cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
