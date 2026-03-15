@@ -342,15 +342,15 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     systemctl enable nftables.service || true
     systemctl restart nftables.service || true
 
-    # Add admin user and disable root login
-    adduser --disabled-password --gecos "" $ADMIN_NAME
-    usermod -aG sudo $ADMIN_NAME
+    # Add admin user (create home) and add to sudoers
+    useradd -m -s /bin/bash $ADMIN_NAME || true
+    usermod -aG sudo $ADMIN_NAME || true
 
     mkdir -p /home/$ADMIN_NAME/.ssh
 
     # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
     if [ -n "${PUBLIC_KEY:-}" ]; then
-        cat > /home/$ADMIN_NAME/.ssh/authorized_keys <<'PUBKEY'
+        cat > /home/$ADMIN_NAME/.ssh/authorized_keys <<PUBKEY
     ${PUBLIC_KEY}
     PUBKEY
     else
@@ -364,6 +364,7 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
             touch /home/$ADMIN_NAME/.ssh/authorized_keys
         fi
     fi
+
     chown -R $ADMIN_NAME:$ADMIN_NAME /home/$ADMIN_NAME/.ssh
     chmod 700 /home/$ADMIN_NAME/.ssh
     chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
@@ -372,18 +373,19 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     echo "$ADMIN_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$ADMIN_NAME
     chmod 440 /etc/sudoers.d/$ADMIN_NAME
 
-    sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
-    systemctl restart ssh
+    # Disable root login only after admin's keys are in place
+    # Temporarily commented out for debugging so root remains available
+    # sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config || true
+    systemctl restart ssh || true
 EOF
 
 # echo "Admin user created and root login disabled successfully."
 
+
 SSH_OPTS="$SSH_OPTS -p $ssh_port"
 
-# echo "Your Murmur server will be available at: $DROPLET_IP:$MUMBLE_PORT"
-
 # Schedule a system restart to complete setup
-ssh $SSH_OPTS -p $ssh_port $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
+ssh $SSH_OPTS $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
 
 # echo "Server Rebooting"
 
