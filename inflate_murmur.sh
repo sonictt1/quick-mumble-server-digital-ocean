@@ -172,6 +172,8 @@ SSH_OPTS="-o ConnectTimeout=20 -o StrictHostKeyChecking=no"
 if [ -n "$SSH_IDENTITY_FILE" ]; then
     SSH_OPTS="$SSH_OPTS -i $SSH_IDENTITY_FILE"
 fi
+# ensure all ssh/scp calls use the requested port
+SSH_OPTS="$SSH_OPTS -p $ssh_port"
 
 if [ "$VERBOSE" -eq 1 ]; then
     echo "[VERBOSE] Creating Murmur server droplet with the following configuration:"
@@ -304,43 +306,13 @@ fi
     # echo "Database uploaded, ini file updated, and Murmur restarted!"
 
 ssh $SSH_OPTS root@$DROPLET_IP <<EOF
-    # Configure SSH
-    # Ensure sshd listens on port 22 and the configured port (allow multiple Port entries)
+    # Configure SSH ports
     if ! grep -q "^Port 22" /etc/ssh/sshd_config 2>/dev/null; then
         echo "Port 22" >> /etc/ssh/sshd_config
     fi
     if ! grep -q "^Port $ssh_port" /etc/ssh/sshd_config 2>/dev/null; then
         echo "Port $ssh_port" >> /etc/ssh/sshd_config
     fi
-    
-    # Flush existing rules
-    iptables -F
-
-    # Allow loopback
-    iptables -A INPUT -i lo -j ACCEPT
-
-    # Allow established/related connections
-    iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-    # Allow SSH on specified port and also allow port 22 for runner connectivity
-    iptables -A INPUT -p tcp --dport $ssh_port -j ACCEPT
-    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-    
-    # Allow HTTP and HTTPS for Certbot
-    iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-
-    # Allow Mumble (TCP and UDP on specified port)
-    iptables -A INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
-    iptables -A INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
-
-    # Drop all other incoming traffic
-    iptables -A INPUT -j DROP
-
-    # Persist firewall rules: prefer nftables (nf_tables backend)
-    nft list ruleset | tee /etc/nftables.conf >/dev/null
-    systemctl enable nftables.service || true
-    systemctl restart nftables.service || true
 
     # Add admin user (create home) and add to sudoers
     useradd -m -s /bin/bash $ADMIN_NAME || true
@@ -351,8 +323,8 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
     if [ -n "${PUBLIC_KEY:-}" ]; then
         cat > /home/$ADMIN_NAME/.ssh/authorized_keys <<PUBKEY
-    ${PUBLIC_KEY}
-    PUBKEY
+${PUBLIC_KEY}
+PUBKEY
     else
         if [ -f /root/.ssh/authorized_keys ]; then
             cp /root/.ssh/authorized_keys /home/$ADMIN_NAME/.ssh/authorized_keys
@@ -373,10 +345,45 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
     echo "$ADMIN_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$ADMIN_NAME
     chmod 440 /etc/sudoers.d/$ADMIN_NAME
 
-    # Disable root login only after admin's keys are in place
-    # Temporarily commented out for debugging so root remains available
-    # sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config || true
+    # Restart sshd so new Port entries and keys are applied
     systemctl restart ssh || true
+
+    # Verify sshd is listening on the requested port before applying restrictive firewall
+    if ss -tnl | grep -q ":$ssh_port\b"; then
+        echo "sshd listening on $ssh_port, proceeding to apply firewall rules"
+
+        # Flush existing rules
+        iptables -F
+
+        # Allow loopback
+        iptables -A INPUT -i lo -j ACCEPT
+
+        # Allow established/related connections
+        iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+        # Allow SSH on specified port and also allow port 22 for runner connectivity
+        iptables -A INPUT -p tcp --dport $ssh_port -j ACCEPT
+        iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+        # Allow HTTP and HTTPS for Certbot
+        iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+        iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+        # Allow Mumble (TCP and UDP on specified port)
+        iptables -A INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
+        iptables -A INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
+
+        # Drop all other incoming traffic
+        iptables -A INPUT -j DROP
+
+        # Persist firewall rules: prefer nftables (nf_tables backend)
+        nft list ruleset | tee /etc/nftables.conf >/dev/null
+        systemctl enable nftables.service || true
+        systemctl restart nftables.service || true
+    else
+        echo "WARNING: sshd not listening on $ssh_port; skipping firewall DROP to avoid lockout" >&2
+    fi
+EOF
 EOF
 
 # echo "Admin user created and root login disabled successfully."
