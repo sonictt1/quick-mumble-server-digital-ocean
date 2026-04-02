@@ -168,12 +168,14 @@ if [ -n "$SSH_IDENTITY_FILE" ] && [ ! -f "$SSH_IDENTITY_FILE" ]; then
 fi
 
 # Build SSH options
-SSH_OPTS="-o ConnectTimeout=20 -o StrictHostKeyChecking=no"
+# SETUP_SSH_OPTS: used for all connections to the freshly-created droplet (port 22, root)
+# SSH_OPTS: used after reboot when the custom port and admin user are active
+_BASE_SSH_OPTS="-o ConnectTimeout=20 -o StrictHostKeyChecking=no"
 if [ -n "$SSH_IDENTITY_FILE" ]; then
-    SSH_OPTS="$SSH_OPTS -i $SSH_IDENTITY_FILE"
+    _BASE_SSH_OPTS="$_BASE_SSH_OPTS -i $SSH_IDENTITY_FILE"
 fi
-# ensure all ssh/scp calls use the requested port
-SSH_OPTS="$SSH_OPTS -p $ssh_port"
+SETUP_SSH_OPTS="$_BASE_SSH_OPTS -p 22"
+SSH_OPTS="$_BASE_SSH_OPTS -p $ssh_port"
 
 if [ "$VERBOSE" -eq 1 ]; then
     echo "[VERBOSE] Creating Murmur server droplet with the following configuration:"
@@ -236,9 +238,9 @@ if [ -n "${PROJECT_ID:-}" ]; then
 else
     echo "PROJECT_ID not set; skipping project assignment"
 fi
-# Wait for SSH to be ready (up to 5 minutes)
+# Wait for SSH to be ready on the fresh droplet (port 22, up to 5 minutes)
 for i in {1..30}; do
-    if ssh $SSH_OPTS root@$DROPLET_IP "echo 'SSH ready'" 2>/dev/null; then
+    if ssh $SETUP_SSH_OPTS root@$DROPLET_IP "echo 'SSH ready'" 2>/dev/null; then
         break
     fi
     # echo "  Attempt $i/30: SSH not ready yet, waiting 5 seconds..."
@@ -249,11 +251,11 @@ done
 
 # Upload and install the conf file
 # if [ -n "$MUMBLE_INI_FILE" ]; then
-    scp $SSH_OPTS "$MUMBLE_INI_FILE" root@$DROPLET_IP:/tmp/mumble-server.ini
+    scp $SETUP_SSH_OPTS "$MUMBLE_INI_FILE" root@$DROPLET_IP:/tmp/mumble-server.ini
 # fi
     
 # echo "Installing database and restarting Murmur..."
-ssh $SSH_OPTS root@$DROPLET_IP << EOF
+ssh $SETUP_SSH_OPTS root@$DROPLET_IP << EOF
     apt update -y -o Dpkg::Options::="--force-confold"
     UCF_FORCE_CONFFOLD=1 apt upgrade -y -o Dpkg::Options::="--force-confold"
     # Ensure universe repository is enabled (mumble-server may live in universe)
@@ -290,12 +292,12 @@ if [ -n "$DATABASE_FILE" ]; then
     if [ "$VERBOSE" -eq 1 ]; then
         echo "[VERBOSE] Uploading database file..."
         echo "[VERBOSE] Waiting for SSH to be available..."
-        echo "[VERBOSE] Using SSH options: $SSH_OPTS"
-        echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
+        echo "[VERBOSE] Using SSH options: $SETUP_SSH_OPTS"
+        echo "[VERBOSE] Full ssh command: ssh $SETUP_SSH_OPTS root@$DROPLET_IP"
     fi
-    scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
+    scp $SETUP_SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
-    ssh $SSH_OPTS root@$DROPLET_IP << EOF
+    ssh $SETUP_SSH_OPTS root@$DROPLET_IP << EOF
         mkdir -p "$DB_DESTINATION_PATH"
         cp -f /tmp/mumble-server.sqlite "$DB_DESTINATION_PATH/mumble-server.sqlite"
         chown mumble-server "$DB_DESTINATION_PATH/mumble-server.sqlite"
@@ -305,7 +307,7 @@ EOF
 fi
     # echo "Database uploaded, ini file updated, and Murmur restarted!"
 
-ssh $SSH_OPTS root@$DROPLET_IP <<EOF
+ssh $SETUP_SSH_OPTS root@$DROPLET_IP <<EOF
     # Configure SSH ports
     if ! grep -q "^Port 22" /etc/ssh/sshd_config 2>/dev/null; then
         echo "Port 22" >> /etc/ssh/sshd_config
@@ -314,11 +316,13 @@ ssh $SSH_OPTS root@$DROPLET_IP <<EOF
         echo "Port $ssh_port" >> /etc/ssh/sshd_config
     fi
 
-    # Add admin user (create home) and add to sudoers
-    useradd -m -s /bin/bash $ADMIN_NAME || true
-    usermod -aG sudo $ADMIN_NAME || true
+    # Add admin user (create home) and add to sudoers (idempotent)
+    if ! id -u "$ADMIN_NAME" >/dev/null 2>&1; then
+        useradd -m -s /bin/bash "$ADMIN_NAME" || true
+    fi
+    usermod -aG sudo "$ADMIN_NAME" || true
 
-    mkdir -p /home/$ADMIN_NAME/.ssh
+    mkdir -p /home/"$ADMIN_NAME"/.ssh
 
     # Provision admin's authorized_keys: prefer provided public key, else copy existing keys on droplet
     if [ -n "${PUBLIC_KEY:-}" ]; then
@@ -348,53 +352,77 @@ PUBKEY
     # Restart sshd so new Port entries and keys are applied
     systemctl restart ssh || true
 
-    # Verify sshd is listening on the requested port before applying restrictive firewall
-    if ss -tnl | grep -q ":$ssh_port\b"; then
-        echo "sshd listening on $ssh_port, proceeding to apply firewall rules"
+    # Wait for sshd to listen on the requested port (up to ~60s)
+    for i in {1..30}; do
+        if ss -tnl | grep -q ":$ssh_port\b"; then
+            break
+        fi
+        sleep 2
+    done
 
-        # Flush existing rules
-        iptables -F
-
-        # Allow loopback
-        iptables -A INPUT -i lo -j ACCEPT
-
-        # Allow established/related connections
-        iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-        # Allow SSH on specified port and also allow port 22 for runner connectivity
-        iptables -A INPUT -p tcp --dport $ssh_port -j ACCEPT
-        iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-
-        # Allow HTTP and HTTPS for Certbot
-        iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-        iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-
-        # Allow Mumble (TCP and UDP on specified port)
-        iptables -A INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
-        iptables -A INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
-
-        # Drop all other incoming traffic
-        iptables -A INPUT -j DROP
-
-        # Persist firewall rules: prefer nftables (nf_tables backend)
-        nft list ruleset | tee /etc/nftables.conf >/dev/null
-        systemctl enable nftables.service || true
-        systemctl restart nftables.service || true
-    else
-        echo "WARNING: sshd not listening on $ssh_port; skipping firewall DROP to avoid lockout" >&2
+    if ! ss -tnl | grep -q ":$ssh_port\b"; then
+        echo "WARNING: sshd not listening on $ssh_port after restart; skipping firewall and root-lockout" >&2
+        exit 0
     fi
+
+    echo "sshd listening on $ssh_port, proceeding to apply firewall rules and hardening"
+
+    # Disable root login now that admin user has authorized_keys
+    if grep -q "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null; then
+        sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config || true
+    else
+        echo "PermitRootLogin no" >> /etc/ssh/sshd_config
+    fi
+
+    # Restart sshd to apply PermitRootLogin change
+    systemctl restart ssh || true
+
+    # Flush existing rules
+    iptables -F
+
+    # Allow loopback
+    iptables -A INPUT -i lo -j ACCEPT
+
+    # Allow established/related connections
+    iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    # Allow SSH on specified port and also allow port 22 for runner connectivity
+    iptables -A INPUT -p tcp --dport $ssh_port -j ACCEPT
+    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+    # Allow HTTP and HTTPS for Certbot
+    iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+    # Allow Mumble (TCP and UDP on specified port)
+    iptables -A INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
+
+    # Drop all other incoming traffic
+    iptables -A INPUT -j DROP
+
+    # Persist firewall rules: prefer nftables (nf_tables backend)
+    nft list ruleset | tee /etc/nftables.conf >/dev/null || true
+    systemctl enable nftables.service || true
+    systemctl restart nftables.service || true
+
+    # Final sync and reboot to ensure all changes apply
+    sync
+    reboot now
 EOF
-EOF
 
-# echo "Admin user created and root login disabled successfully."
+# echo "Admin user created and sshd/firewall/hardening applied (reboot issued)."
 
-
-SSH_OPTS="$SSH_OPTS -p $ssh_port"
-
-# Schedule a system restart to complete setup
-ssh $SSH_OPTS $ADMIN_NAME@$DROPLET_IP "sudo reboot now"
-
-# echo "Server Rebooting"
+# Wait for the server to come back up after reboot.
+# Root login is now disabled, so poll as the admin user.
+# Give the OS a moment to actually start shutting down before we begin polling.
+sleep 20
+for i in {1..40}; do
+    if ssh $SSH_OPTS "$ADMIN_NAME@$DROPLET_IP" "echo 'SSH ready post-reboot'" 2>/dev/null; then
+        break
+    fi
+    sleep 5
+done
 
 # Print droplet ID as the final, machine-parseable output so callers
 # (for example CI workflows) can capture it reliably.
