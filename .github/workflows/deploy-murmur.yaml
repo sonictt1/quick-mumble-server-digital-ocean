@@ -6,7 +6,7 @@ on:
       ssh_port:
         description: 'SSH port'
         required: true
-        default: '44'
+        default: '22'
       server_image:
         description: 'Droplet image (e.g., ubuntu-22-04-x64)'
         required: false
@@ -20,9 +20,9 @@ on:
         required: false
         default: 'sonic-bear-voice-chat'
       mumble_server_port:
-        description: 'Mumble server port (defaults to 64869)'
+        description: 'Mumble server port (defaults to 64738)'
         required: false
-        default: '64869'
+        default: '64738'
       admin_username:
         description: 'Admin SSH username'
         required: true

@@ -68,12 +68,19 @@ ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
     DEBIAN_FRONTEND=noninteractive sudo apt-get install -yq --no-install-recommends -o Dpkg::Options::="--force-confold" certbot
     sudo systemctl stop mumble-server || true
 
-    sudo certbot certonly --standalone -d "$SUBDOMAIN.$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"
+    if sudo certbot certonly --standalone -d "$SUBDOMAIN.$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"; then
+        # Grant mumble-server user read access to the cert files (certbot defaults to root-only)
+        sudo chgrp -R mumble-server /etc/letsencrypt/live/ /etc/letsencrypt/archive/
+        sudo chmod -R g+rX /etc/letsencrypt/live/ /etc/letsencrypt/archive/
 
-    sudo sed -i -E "s|^[[:space:]]*;?sslCert=.*|sslCert=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/fullchain.pem|" "/etc/mumble-server.ini"
-    sudo sed -i -E "s|^[[:space:]]*;?sslKey=.*|sslKey=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/privkey.pem|" "/etc/mumble-server.ini"
+        # Inject SSL paths into mumble config — handle both # and ; comment prefixes and plain lines
+        sudo sed -i -E "s|^[[:space:]]*[#;]?[[:space:]]*sslCert=.*|sslCert=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/fullchain.pem|" "/etc/mumble-server.ini"
+        sudo sed -i -E "s|^[[:space:]]*[#;]?[[:space:]]*sslKey=.*|sslKey=/etc/letsencrypt/live/$SUBDOMAIN.$DOMAIN/privkey.pem|" "/etc/mumble-server.ini"
+    else
+        echo "ERROR: certbot failed; SSL paths NOT written to mumble config. Mumble will start without SSL." >&2
+    fi
 
     sudo systemctl start mumble-server || true
 
-    echo "0 3 * * * root certbot renew --quiet && sudo systemctl restart mumble-server" | sudo tee /etc/cron.d/murmur-cert-renew
+    echo "0 3 * * * root certbot renew --quiet && chgrp -R mumble-server /etc/letsencrypt/live/ /etc/letsencrypt/archive/ && chmod -R g+rX /etc/letsencrypt/live/ /etc/letsencrypt/archive/ && systemctl restart mumble-server" | sudo tee /etc/cron.d/murmur-cert-renew
 EOF
