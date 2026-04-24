@@ -294,15 +294,15 @@ if [ -n "$DATABASE_FILE" ]; then
     fi
     scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
-    ssh $SSH_OPTS root@$DROPLET_IP << 'EOF'
+    ssh $SSH_OPTS root@$DROPLET_IP << EOF
         # Stop the service before replacing the DB to avoid file-descriptor issues
         systemctl stop mumble-server || true
 
         mkdir -p "$DB_DESTINATION_PATH"
         # Copy main DB and any WAL/SHM sidecars if present
         for f in /tmp/mumble-server.sqlite*; do
-            if [ -e "$f" ]; then
-                cp -f "$f" "$DB_DESTINATION_PATH/$(basename "$f")"
+            if [ -e "\$f" ]; then
+                cp -f "\$f" "$DB_DESTINATION_PATH/\$(basename "\$f")"
             fi
         done
 
