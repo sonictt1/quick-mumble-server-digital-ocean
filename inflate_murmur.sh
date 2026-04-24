@@ -280,7 +280,7 @@ ssh $SSH_OPTS root@$DROPLET_IP << EOF
     chown mumble-server /etc/mumble-server.ini || true
     chmod 640 /etc/mumble-server.ini || true
     sed -i "s/^port=.*/port=$MUMBLE_PORT/" /etc/mumble-server.ini || true
-    systemctl start mumble-server || true
+    # Do NOT start the service here; wait until DB (and any WAL/SHM sidecars) are in place
     rm /tmp/mumble-server.ini
 EOF
 
@@ -294,12 +294,31 @@ if [ -n "$DATABASE_FILE" ]; then
     fi
     scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
-    ssh $SSH_OPTS root@$DROPLET_IP << EOF
+    ssh $SSH_OPTS root@$DROPLET_IP << 'EOF'
+        # Stop the service before replacing the DB to avoid file-descriptor issues
+        systemctl stop mumble-server || true
+
         mkdir -p "$DB_DESTINATION_PATH"
-        cp -f /tmp/mumble-server.sqlite "$DB_DESTINATION_PATH/mumble-server.sqlite"
-        chown mumble-server "$DB_DESTINATION_PATH/mumble-server.sqlite"
-        chmod 644 "$DB_DESTINATION_PATH/mumble-server.sqlite"
-        rm /tmp/mumble-server.sqlite
+        # Copy main DB and any WAL/SHM sidecars if present
+        for f in /tmp/mumble-server.sqlite*; do
+            if [ -e "$f" ]; then
+                cp -f "$f" "$DB_DESTINATION_PATH/$(basename "$f")"
+            fi
+        done
+
+        chown mumble-server:mumble-server "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
+        chmod 660 "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
+
+        # Ensure WAL content is checkpointed into the main DB so murmur sees latest state
+        if command -v sqlite3 >/dev/null 2>&1; then
+            sudo -u mumble-server sqlite3 "$DB_DESTINATION_PATH/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+        fi
+
+        # Clean up temporary uploads
+        rm -f /tmp/mumble-server.sqlite*
+
+        # Start the service after the DB is in place
+        systemctl start mumble-server || true
 EOF
 fi
     # echo "Database uploaded, ini file updated, and Murmur restarted!"
