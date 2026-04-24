@@ -261,7 +261,7 @@ ssh $SSH_OPTS root@$DROPLET_IP << EOF
     apt-get install -y software-properties-common || true
     add-apt-repository -y universe || true
     apt update -y
-    apt install -y mumble-server -o Dpkg::Options::="--force-confold" || true
+    apt install -y mumble-server sqlite3 -o Dpkg::Options::="--force-confold" || true
 
     mkdir -p /var/lib/mumble-server
     mkdir -p /var/log/mumble-server
@@ -292,7 +292,18 @@ if [ -n "$DATABASE_FILE" ]; then
         echo "[VERBOSE] Using SSH options: $SSH_OPTS"
         echo "[VERBOSE] Full ssh command: ssh $SSH_OPTS root@$DROPLET_IP"
     fi
+    LOCAL_DB_CHECKSUM=$(sha256sum "$DATABASE_FILE" | awk '{print $1}')
+    [ "$VERBOSE" -eq 1 ] && echo "[VERBOSE] Local DB checksum: $LOCAL_DB_CHECKSUM"
+
     scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
+
+    # Verify the file actually arrived before proceeding
+    REMOTE_TMP_CHECKSUM=$(ssh $SSH_OPTS root@$DROPLET_IP "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
+    if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
+        echo "ERROR: scp upload failed or checksum mismatch at /tmp/mumble-server.sqlite (got '$REMOTE_TMP_CHECKSUM', expected '$LOCAL_DB_CHECKSUM')" >&2
+        exit 1
+    fi
+    [ "$VERBOSE" -eq 1 ] && echo "[VERBOSE] Upload verified: /tmp/mumble-server.sqlite checksum OK."
 
     ssh $SSH_OPTS root@$DROPLET_IP << EOF
         # Stop the service before replacing the DB to avoid file-descriptor issues
@@ -308,6 +319,16 @@ if [ -n "$DATABASE_FILE" ]; then
 
         chown mumble-server:mumble-server "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
         chmod 660 "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
+
+        # Verify the copy succeeded by comparing checksums
+        SERVER_CHECKSUM=\$(sha256sum "$DB_DESTINATION_PATH/mumble-server.sqlite" | awk '{print \$1}')
+        echo "[DB COPY] Server DB checksum: \$SERVER_CHECKSUM"
+        echo "[DB COPY] Expected checksum:  $LOCAL_DB_CHECKSUM"
+        if [ "\$SERVER_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
+            echo "ERROR: DB checksum mismatch after copy! Aborting." >&2
+            exit 1
+        fi
+        echo "[DB COPY] Checksum verified OK."
 
         # Ensure WAL content is checkpointed into the main DB so murmur sees latest state
         if command -v sqlite3 >/dev/null 2>&1; then
