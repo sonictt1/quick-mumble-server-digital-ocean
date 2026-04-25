@@ -207,6 +207,14 @@ jobs:
           REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
           set -euo pipefail
           DB_DEST="/var/lib/mumble-server"
+          
+          # Ensure sqlite3 is installed before proceeding
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            echo "sqlite3 not found; installing..."
+            apt-get update -qq
+            apt-get install -y sqlite3
+          fi
+          
           sudo systemctl stop mumble-server || true
           sudo mkdir -p "$DB_DEST"
           for f in /tmp/mumble-server.sqlite*; do
@@ -216,10 +224,6 @@ jobs:
           done
           sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
           sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
-          if ! command -v sqlite3 >/dev/null 2>&1; then
-            echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
-            exit 1
-          fi
           sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
           CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
           if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
