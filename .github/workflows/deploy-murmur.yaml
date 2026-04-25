@@ -132,7 +132,25 @@ jobs:
           set -euo pipefail
           echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
           SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
-          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
+          
+          # Retry with backoff in case server is overwhelmed (Exceeded MaxStartups)
+          attempt=1; max_attempts=10; delay=5
+          while true; do
+            echo "SSH connectivity attempt $attempt..."
+            if /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1; then
+              echo "SSH_OK"
+              break
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "SSH debug connection failed after $attempt attempts:" >&2
+              sed -n '1,400p' /tmp/ssh_debug.txt >&2
+              exit 1
+            fi
+            echo "SSH connection failed; retrying in ${delay}s..." >&2
+            sleep "$delay"
+            attempt=$((attempt+1))
+            delay=$((delay*2))
+          done
 
       - name: Obtain Let's Encrypt certificate
         run: |
@@ -148,58 +166,90 @@ jobs:
           echo "Local checksum: $LOCAL_DB_CHECKSUM"
           RESERVED_IP='${{ steps.reserve.outputs.reserved_ip }}'
           SSH_PORT='${{ github.event.inputs.ssh_port }}'
+          ADMIN_USERNAME='${{ github.event.inputs.admin_username }}'
 
-          # Upload to /tmp on the droplet
-          scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" "$GITHUB_WORKSPACE/mumble-server.sqlite" root@${RESERVED_IP}:/tmp/mumble-server.sqlite
+          # small pause to allow SSHD settle if server is new
+          sleep 5
 
-          # Verify remote temp file checksum
-          REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" root@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
+          # retry helper (first arg is max attempts, default 6)
+          run_with_retry() {
+            local max_attempts=${1:-6}
+            shift || true
+            local attempt=1
+            local delay=5
+            while true; do
+              "$@" && return 0
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Command failed after $attempt attempts: $*" >&2
+                return 1
+              fi
+              echo "Command failed; retrying in ${delay}s..." >&2
+              sleep "$delay"
+              attempt=$((attempt+1))
+              delay=$((delay*2))
+            done
+          }
+
+          SCP_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -P "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" )
+
+          echo "Uploading DB to ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp..."
+          run_with_retry 6 scp "${SCP_OPTS[@]}" "$GITHUB_WORKSPACE/mumble-server.sqlite" ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp/mumble-server.sqlite
+
+          echo "Checking remote tmp checksum..."
+          REMOTE_TMP_CHECKSUM=$(run_with_retry 6 ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1")
           echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM"
           if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
             echo "ERROR: upload failed or checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
             exit 1
           fi
 
-          # Atomically install DB and sidecars, run WAL checkpoint, verify via sqlite3, and start service
-          ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" root@${RESERVED_IP} bash -s <<'REMOTE'
-            set -euo pipefail
-            DB_DEST="/var/lib/mumble-server"
-            systemctl stop mumble-server || true
-            mkdir -p "$DB_DEST"
-            # copy main and sidecars
-            for f in /tmp/mumble-server.sqlite*; do
-              if [ -e "$f" ]; then
-                cp -f "$f" "$DB_DEST/$(basename "$f")"
-              fi
-            done
-            chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
-            chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
+          # capture remote install script so it can be re-sent on retries
+          REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
+set -euo pipefail
+DB_DEST="/var/lib/mumble-server"
+sudo systemctl stop mumble-server || true
+sudo mkdir -p "$DB_DEST"
+for f in /tmp/mumble-server.sqlite*; do
+  if [ -e "$f" ]; then
+    sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
+  fi
+done
+sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
+sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
+  exit 1
+fi
+sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
+if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
+  echo "ERROR: 'channels' table not found in DB" >&2
+  exit 1
+fi
+CHANNELS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM channels;" 2>/dev/null || echo 0)
+echo "[DB VERIFY] channels count: $CHANNELS"
+if [ "$CHANNELS" -lt 2 ]; then
+  echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
+  exit 1
+fi
+rm -f /tmp/mumble-server.sqlite*
+sudo systemctl start mumble-server || true
+sudo sha256sum "$DB_DEST/mumble-server.sqlite"
+REMOTE_EOF
+)
 
-            # Verify DB contents using sqlite3; fail if verification fails
-            if ! command -v sqlite3 >/dev/null 2>&1; then
-              echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
+          attempt=1; max_attempts=6; delay=5
+          while true; do
+            echo "Running remote install attempt $attempt..."
+            printf '%s\n' "$REMOTE_SCRIPT" | ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} bash -s && break
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "ERROR: remote install failed after $attempt attempts" >&2
               exit 1
             fi
-
-            # Ensure WAL content is checkpointed into the main DB so murmur sees latest state
-            sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
-
-            # Check channels table exists and has more than root channel
-            CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
-            if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
-              echo "ERROR: 'channels' table not found in DB" >&2
-              exit 1
-            fi
-            CHANNELS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM channels;" 2>/dev/null || echo 0)
-            echo "[DB VERIFY] channels count: $CHANNELS"
-            if [ "$CHANNELS" -lt 2 ]; then
-              echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
-              exit 1
-            fi
-
-            rm -f /tmp/mumble-server.sqlite*
-            systemctl start mumble-server || true
-            sha256sum "$DB_DEST/mumble-server.sqlite"
-          REMOTE
+            echo "Remote install failed; retrying in ${delay}s..." >&2
+            sleep "$delay"
+            attempt=$((attempt+1))
+            delay=$((delay*2))
+          done
 
 
