@@ -127,34 +127,33 @@ jobs:
           fi
           sleep 90 # Wait a bit for the droplet to be fully ready before SSH attempts
 
-  upload-db:
-    needs: deploy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH identity for DB upload
+      - name: SSH debug connection
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DO_SSH_PRIVATE_KEY }}" > ~/.ssh/do_ssh_key
-          chmod 600 ~/.ssh/do_ssh_key
+          set -euo pipefail
+          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
+          SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
+          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
+
+      - name: Obtain Let's Encrypt certificate
+        run: |
+          set -euo pipefail
+          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
+          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
 
       - name: Upload and install sqlite DB
-        env:
-          RESERVED_IP: ${{ needs.deploy.outputs.reserved_ip }}
-          ADMIN_USERNAME: ${{ github.event.inputs.admin_username }}
-          SSH_PORT: ${{ github.event.inputs.ssh_port }}
         run: |
           set -euo pipefail
           echo "Uploading local DB checksum..."
           LOCAL_DB_CHECKSUM=$(sha256sum "$GITHUB_WORKSPACE/mumble-server.sqlite" | awk '{print $1}')
           echo "Local checksum: $LOCAL_DB_CHECKSUM"
+          RESERVED_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          SSH_PORT='${{ github.event.inputs.ssh_port }}'
 
           # Upload to /tmp on the droplet
-          scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -i ~/.ssh/do_ssh_key "$GITHUB_WORKSPACE/mumble-server.sqlite" root@${RESERVED_IP}:/tmp/mumble-server.sqlite
+          scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" "$GITHUB_WORKSPACE/mumble-server.sqlite" root@${RESERVED_IP}:/tmp/mumble-server.sqlite
 
           # Verify remote temp file checksum
-          REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i ~/.ssh/do_ssh_key root@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
+          REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" root@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
           echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM"
           if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
             echo "ERROR: upload failed or checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
@@ -162,7 +161,7 @@ jobs:
           fi
 
           # Atomically install DB and sidecars, run WAL checkpoint, verify via sqlite3, and start service
-          ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i ~/.ssh/do_ssh_key root@${RESERVED_IP} bash -s <<'REMOTE'
+          ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" root@${RESERVED_IP} bash -s <<'REMOTE'
             set -euo pipefail
             DB_DEST="/var/lib/mumble-server"
             systemctl stop mumble-server || true
@@ -201,16 +200,6 @@ jobs:
             rm -f /tmp/mumble-server.sqlite*
             systemctl start mumble-server || true
             sha256sum "$DB_DEST/mumble-server.sqlite"
+          REMOTE
 
-      - name: SSH debug connection
-        run: |
-          set -euo pipefail
-          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ needs.deploy.outputs.reserved_ip }}"
-          SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
-          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ needs.deploy.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
 
-      - name: Obtain Let's Encrypt certificate
-        run: |
-          set -euo pipefail
-          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ needs.deploy.outputs.reserved_ip }}"
-          ./letsencrypt_cert_script.sh --reserved-ip "${{ needs.deploy.outputs.reserved_ip }}" --droplet-id "${{ needs.deploy.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
