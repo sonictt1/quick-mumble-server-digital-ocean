@@ -201,7 +201,6 @@ jobs:
             rm -f /tmp/mumble-server.sqlite*
             systemctl start mumble-server || true
             sha256sum "$DB_DEST/mumble-server.sqlite"
-REMOTE
 
       - name: SSH debug connection
         run: |
