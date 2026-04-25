@@ -47,6 +47,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    outputs:
+      reserved_ip: ${{ steps.reserve.outputs.reserved_ip }}
+      droplet_id: ${{ steps.inflate.outputs.droplet_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -112,7 +115,6 @@ jobs:
             --ssh-public-key "${{ vars.SSH_PUBLIC_KEY }}" \
             --domain "${{ github.event.inputs.domain }}" \
             --mumble-ini ./mumble-server.ini \
-            --database ./mumble-server.sqlite \
             -l "$MUMBLE_PORT" \
             --verbose \
             --tags "$TAGS" >"$OUTFILE" 2>&1; then
@@ -125,15 +127,91 @@ jobs:
           fi
           sleep 90 # Wait a bit for the droplet to be fully ready before SSH attempts
 
+  upload-db:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH identity for DB upload
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DO_SSH_PRIVATE_KEY }}" > ~/.ssh/do_ssh_key
+          chmod 600 ~/.ssh/do_ssh_key
+
+      - name: Upload and install sqlite DB
+        env:
+          RESERVED_IP: ${{ needs.deploy.outputs.reserved_ip }}
+          ADMIN_USERNAME: ${{ github.event.inputs.admin_username }}
+          SSH_PORT: ${{ github.event.inputs.ssh_port }}
+        run: |
+          set -euo pipefail
+          echo "Uploading local DB checksum..."
+          LOCAL_DB_CHECKSUM=$(sha256sum "$GITHUB_WORKSPACE/mumble-server.sqlite" | awk '{print $1}')
+          echo "Local checksum: $LOCAL_DB_CHECKSUM"
+
+          # Upload to /tmp on the droplet
+          scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -i ~/.ssh/do_ssh_key "$GITHUB_WORKSPACE/mumble-server.sqlite" root@${RESERVED_IP}:/tmp/mumble-server.sqlite
+
+          # Verify remote temp file checksum
+          REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i ~/.ssh/do_ssh_key root@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
+          echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM"
+          if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
+            echo "ERROR: upload failed or checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
+            exit 1
+          fi
+
+          # Atomically install DB and sidecars, run WAL checkpoint, verify via sqlite3, and start service
+          ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" -i ~/.ssh/do_ssh_key root@${RESERVED_IP} bash -s <<'REMOTE'
+            set -euo pipefail
+            DB_DEST="/var/lib/mumble-server"
+            systemctl stop mumble-server || true
+            mkdir -p "$DB_DEST"
+            # copy main and sidecars
+            for f in /tmp/mumble-server.sqlite*; do
+              if [ -e "$f" ]; then
+                cp -f "$f" "$DB_DEST/$(basename "$f")"
+              fi
+            done
+            chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
+            chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
+
+            # Verify DB contents using sqlite3; fail if verification fails
+            if ! command -v sqlite3 >/dev/null 2>&1; then
+              echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
+              exit 1
+            fi
+
+            # Ensure WAL content is checkpointed into the main DB so murmur sees latest state
+            sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+
+            # Check channels table exists and has more than root channel
+            CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
+            if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
+              echo "ERROR: 'channels' table not found in DB" >&2
+              exit 1
+            fi
+            CHANNELS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM channels;" 2>/dev/null || echo 0)
+            echo "[DB VERIFY] channels count: $CHANNELS"
+            if [ "$CHANNELS" -lt 2 ]; then
+              echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
+              exit 1
+            fi
+
+            rm -f /tmp/mumble-server.sqlite*
+            systemctl start mumble-server || true
+            sha256sum "$DB_DEST/mumble-server.sqlite"
+REMOTE
+
       - name: SSH debug connection
         run: |
           set -euo pipefail
-          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
+          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ needs.deploy.outputs.reserved_ip }}"
           SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
-          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
+          /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ needs.deploy.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1 || { sed -n '1,400p' /tmp/ssh_debug.txt >&2 ; exit 1; }
 
       - name: Obtain Let's Encrypt certificate
         run: |
           set -euo pipefail
-          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
-          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
+          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ needs.deploy.outputs.reserved_ip }}"
+          ./letsencrypt_cert_script.sh --reserved-ip "${{ needs.deploy.outputs.reserved_ip }}" --droplet-id "${{ needs.deploy.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"

@@ -170,10 +170,12 @@ if [ -n "$SSH_IDENTITY_FILE" ] && [ ! -f "$SSH_IDENTITY_FILE" ]; then
     exit 1
 fi
 
-# Build SSH options (single set — always port 22)
+# Build SSH options (ssh uses -p for port; scp uses -P for port)
 SSH_OPTS="-o ConnectTimeout=20 -o StrictHostKeyChecking=no -p 22"
+SCP_OPTS="-o ConnectTimeout=20 -o StrictHostKeyChecking=no -P 22"
 if [ -n "$SSH_IDENTITY_FILE" ]; then
     SSH_OPTS="$SSH_OPTS -i $SSH_IDENTITY_FILE"
+    SCP_OPTS="$SCP_OPTS -i $SSH_IDENTITY_FILE"
 fi
 SETUP_SSH_OPTS="$SSH_OPTS"
 
@@ -250,7 +252,7 @@ done
 
 # Upload and install the conf file
 # if [ -n "$MUMBLE_INI_FILE" ]; then
-    scp $SSH_OPTS "$MUMBLE_INI_FILE" root@$DROPLET_IP:/tmp/mumble-server.ini
+    scp $SCP_OPTS "$MUMBLE_INI_FILE" root@$DROPLET_IP:/tmp/mumble-server.ini
 # fi
     
 # echo "Installing database and restarting Murmur..."
@@ -295,7 +297,7 @@ if [ -n "$DATABASE_FILE" ]; then
     LOCAL_DB_CHECKSUM=$(sha256sum "$DATABASE_FILE" | awk '{print $1}')
     [ "$VERBOSE" -eq 1 ] && echo "[VERBOSE] Local DB checksum: $LOCAL_DB_CHECKSUM"
 
-    scp $SSH_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
+    scp $SCP_OPTS "$DATABASE_FILE" root@$DROPLET_IP:/tmp/mumble-server.sqlite
 
     # Verify the file actually arrived before proceeding
     REMOTE_TMP_CHECKSUM=$(ssh $SSH_OPTS root@$DROPLET_IP "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | awk '{print \$1}'")
