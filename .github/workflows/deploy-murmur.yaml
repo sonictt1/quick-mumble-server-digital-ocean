@@ -237,7 +237,15 @@ jobs:
             exit 1
           fi
           rm -f /tmp/mumble-server.sqlite*
-          sudo systemctl start mumble-server || true
+          sudo systemctl start mumble-server
+          sleep 3
+          if ! sudo systemctl is-active --quiet mumble-server; then
+            echo "ERROR: mumble-server failed to start" >&2
+            sudo systemctl status mumble-server --no-pager >&2 || true
+            sudo journalctl -u mumble-server -n 30 --no-pager >&2 || true
+            exit 1
+          fi
+          echo "[OK] mumble-server is running"
           sudo sha256sum "$DB_DEST/mumble-server.sqlite"
           REMOTE_EOF
           )

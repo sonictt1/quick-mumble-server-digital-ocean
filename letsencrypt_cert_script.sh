@@ -65,8 +65,25 @@ ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
     export DEBIAN_FRONTEND=noninteractive
     export DEBIAN_PRIORITY=critical
     sudo apt-get update -yq
-    DEBIAN_FRONTEND=noninteractive sudo apt-get install -yq --no-install-recommends -o Dpkg::Options::="--force-confold" certbot
+    DEBIAN_FRONTEND=noninteractive sudo apt-get install -yq --no-install-recommends -o Dpkg::Options::="--force-confold" certbot dnsutils
     sudo systemctl stop mumble-server || true
+
+    # Wait for DNS propagation before running certbot (up to 10 minutes)
+    echo "Waiting for DNS propagation of $SUBDOMAIN.$DOMAIN..."
+    dns_ok=0
+    for i in \$(seq 1 20); do
+        resolved=\$(dig +short A "$SUBDOMAIN.$DOMAIN" @8.8.8.8 2>/dev/null || true)
+        if [ -n "\$resolved" ]; then
+            echo "DNS resolved $SUBDOMAIN.$DOMAIN -> \$resolved (attempt \$i)"
+            dns_ok=1
+            break
+        fi
+        echo "DNS not yet visible (attempt \$i/20); waiting 30s..."
+        sleep 30
+    done
+    if [ "\$dns_ok" -eq 0 ]; then
+        echo "WARNING: DNS for $SUBDOMAIN.$DOMAIN did not propagate after 10 minutes; attempting certbot anyway" >&2
+    fi
 
     if sudo certbot certonly --standalone -d "$SUBDOMAIN.$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"; then
         # Grant mumble-server user read access to the cert files (certbot defaults to root-only)
