@@ -205,38 +205,38 @@ jobs:
 
           # capture remote install script so it can be re-sent on retries
           REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
-set -euo pipefail
-DB_DEST="/var/lib/mumble-server"
-sudo systemctl stop mumble-server || true
-sudo mkdir -p "$DB_DEST"
-for f in /tmp/mumble-server.sqlite*; do
-  if [ -e "$f" ]; then
-    sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
-  fi
-done
-sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
-sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
-if ! command -v sqlite3 >/dev/null 2>&1; then
-  echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
-  exit 1
-fi
-sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
-CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
-if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
-  echo "ERROR: 'channels' table not found in DB" >&2
-  exit 1
-fi
-CHANNELS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM channels;" 2>/dev/null || echo 0)
-echo "[DB VERIFY] channels count: $CHANNELS"
-if [ "$CHANNELS" -lt 2 ]; then
-  echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
-  exit 1
-fi
-rm -f /tmp/mumble-server.sqlite*
-sudo systemctl start mumble-server || true
-sudo sha256sum "$DB_DEST/mumble-server.sqlite"
-REMOTE_EOF
-)
+          set -euo pipefail
+          DB_DEST="/var/lib/mumble-server"
+          sudo systemctl stop mumble-server || true
+          sudo mkdir -p "$DB_DEST"
+          for f in /tmp/mumble-server.sqlite*; do
+            if [ -e "$f" ]; then
+              sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
+            fi
+          done
+          sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
+          sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            echo "ERROR: sqlite3 not installed on remote host; cannot verify DB" >&2
+            exit 1
+          fi
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+          CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
+          if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
+            echo "ERROR: 'channels' table not found in DB" >&2
+            exit 1
+          fi
+          CHANNELS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM channels;" 2>/dev/null || echo 0)
+          echo "[DB VERIFY] channels count: $CHANNELS"
+          if [ "$CHANNELS" -lt 2 ]; then
+            echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
+            exit 1
+          fi
+          rm -f /tmp/mumble-server.sqlite*
+          sudo systemctl start mumble-server || true
+          sudo sha256sum "$DB_DEST/mumble-server.sqlite"
+          REMOTE_EOF
+          )
 
           attempt=1; max_attempts=6; delay=5
           while true; do
