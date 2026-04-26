@@ -276,6 +276,10 @@ ssh $SSH_OPTS root@$DROPLET_IP << EOF
     chown -R mumble-server:mumble-server /var/lib/mumble-server || true
     chown -R mumble-server:mumble-server /var/log/mumble-server || true
     systemctl stop mumble-server || true
+    rm -f /var/run/mumble-server/mumble-server.pid /run/mumble-server/mumble-server.pid
+
+    # Ensure START=yes so the Ubuntu SysV init script actually launches the daemon
+    grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || echo 'START=yes' >> /etc/default/mumble-server
 
     # Ubuntu mumble-server package expects config at /etc/mumble-server.ini (not a subdirectory)
     cp /tmp/mumble-server.ini /etc/mumble-server.ini
@@ -339,6 +343,11 @@ if [ -n "$DATABASE_FILE" ]; then
 
         # Clean up temporary uploads
         rm -f /tmp/mumble-server.sqlite*
+
+        # Ensure START=yes so the Ubuntu SysV init script actually launches the daemon
+        grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || echo 'START=yes' >> /etc/default/mumble-server
+        # Remove any stale PID file — the init script silently exits 0 if it finds one
+        rm -f /var/run/mumble-server/mumble-server.pid /run/mumble-server/mumble-server.pid
 
         # Start the service after the DB is in place
         systemctl start mumble-server || true

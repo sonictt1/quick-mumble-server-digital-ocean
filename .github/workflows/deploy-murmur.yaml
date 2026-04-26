@@ -153,6 +153,7 @@ jobs:
           done
 
       - name: Obtain Let's Encrypt certificate
+        if: false # temporarily disabled — rate limit reached; cooldown ends 2026-04-27 08:30:32 UTC
         run: |
           set -euo pipefail
           echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
@@ -237,6 +238,11 @@ jobs:
             exit 1
           fi
           rm -f /tmp/mumble-server.sqlite*
+          # Ensure the init script will actually start the daemon (Ubuntu package omits START entirely)
+          grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || echo 'START=yes' | sudo tee -a /etc/default/mumble-server
+          # Remove any stale PID file left from the stop above — the SysV init script will
+          # silently exit 0 without starting the daemon if it finds an existing PID file
+          sudo rm -f /var/run/mumble-server/mumble-server.pid /run/mumble-server/mumble-server.pid
           sudo systemctl start mumble-server
           sleep 3
           if ! sudo systemctl is-active --quiet mumble-server; then
@@ -263,5 +269,33 @@ jobs:
             attempt=$((attempt+1))
             delay=$((delay*2))
           done
+
+      - name: Diagnose mumble-server state
+        run: |
+          set -euo pipefail
+          RESERVED_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          SSH_PORT='${{ github.event.inputs.ssh_port }}'
+          ADMIN_USERNAME='${{ github.event.inputs.admin_username }}'
+          MUMBLE_PORT='${{ github.event.inputs.mumble_server_port }}'
+          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 \
+            -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} bash -s <<'DIAG'
+          echo "=== systemctl status ==="
+          sudo systemctl status mumble-server --no-pager || true
+          echo ""
+          echo "=== last 40 journal lines ==="
+          sudo journalctl -u mumble-server -n 40 --no-pager || true
+          echo ""
+          echo "=== listening ports (ss) ==="
+          sudo ss -tlnpu | grep -E "mumble|64738" || echo "(nothing matched)"
+          echo ""
+          echo "=== relevant ini settings ==="
+          sudo grep -E "^(port|host|database|sslCert|sslKey|dbDriver)" /etc/mumble-server.ini || true
+          echo ""
+          echo "=== UFW status ==="
+          sudo ufw status verbose || true
+          echo ""
+          echo "=== TCP self-test on mumble port ==="
+          timeout 5 bash -c "echo > /dev/tcp/127.0.0.1/$MUMBLE_PORT" && echo "TCP port $MUMBLE_PORT is open" || echo "TCP port $MUMBLE_PORT is NOT reachable locally"
+          DIAG
 
 
