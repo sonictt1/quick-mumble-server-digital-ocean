@@ -222,8 +222,8 @@ jobs:
               sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
             fi
           done
-          sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* || true
-          sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* || true
+          sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* 2>/dev/null || sudo sh -c "chown mumble-server:mumble-server $DB_DEST/mumble-server.sqlite* 2>/dev/null" || true
+          sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* 2>/dev/null || sudo sh -c "chmod 660 $DB_DEST/mumble-server.sqlite* 2>/dev/null" || true
           sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
           CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
           if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
