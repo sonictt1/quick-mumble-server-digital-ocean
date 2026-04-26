@@ -316,6 +316,11 @@ if [ -n "$DATABASE_FILE" ]; then
         systemctl stop mumble-server || true
 
         mkdir -p "$DB_DESTINATION_PATH"
+        # Remove any stale journal/wal/shm files left by a previous murmur run before
+        # copying in the repo DB — a leftover -journal causes sqlite3 to see corruption
+        rm -f "$DB_DESTINATION_PATH"/mumble-server.sqlite-journal \
+              "$DB_DESTINATION_PATH"/mumble-server.sqlite-wal \
+              "$DB_DESTINATION_PATH"/mumble-server.sqlite-shm
         # Copy main DB and any WAL/SHM sidecars if present
         for f in /tmp/mumble-server.sqlite*; do
             if [ -e "\$f" ]; then

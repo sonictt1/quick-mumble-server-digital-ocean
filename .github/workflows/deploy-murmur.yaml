@@ -218,6 +218,11 @@ jobs:
           
           sudo systemctl stop mumble-server || true
           sudo mkdir -p "$DB_DEST"
+          # Remove any stale journal/wal/shm files left by a previous murmur run before
+          # copying in the repo DB — a leftover -journal causes sqlite3 to see corruption
+          sudo rm -f "$DB_DEST"/mumble-server.sqlite-journal \
+                     "$DB_DEST"/mumble-server.sqlite-wal \
+                     "$DB_DEST"/mumble-server.sqlite-shm
           for f in /tmp/mumble-server.sqlite*; do
             if [ -e "$f" ]; then
               sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
