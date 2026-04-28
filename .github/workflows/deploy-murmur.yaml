@@ -266,9 +266,13 @@ jobs:
             exit 1
           fi
           
-          # Dump channel names for diagnostics
-          echo "[DB VERIFY] channel names:"
-          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT id, name FROM channels ORDER BY id;" 2>/dev/null | head -20 || true
+          # Dump full channel schema and data (no stderr suppression so errors are visible)
+          echo "[DB VERIFY] channels table schema:"
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" ".schema channels" || true
+          echo "[DB VERIFY] channel rows (server_id|id|name):"
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT server_id, id, name FROM channels ORDER BY server_id, id;" | head -20 || true
+          echo "[DB VERIFY] servers table:"
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT * FROM servers LIMIT 5;" || true
           rm -f /tmp/mumble-server.sqlite*
           # Ensure the init script will actually start the daemon (Ubuntu package omits START entirely)
           grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || echo 'START=yes' | sudo tee -a /etc/default/mumble-server
@@ -285,6 +289,8 @@ jobs:
           fi
           echo "[OK] mumble-server is running"
           sudo sha256sum "$DB_DEST/mumble-server.sqlite"
+          echo "[POST-START] channels in live DB (murmur may have modified it):"
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT server_id, id, name FROM channels ORDER BY server_id, id;" | head -20 || true
           REMOTE_EOF
           )
 
