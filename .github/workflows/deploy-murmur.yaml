@@ -201,9 +201,15 @@ jobs:
           # Verify checksum with aggressive retries (SSH daemon may still be settling)
           echo "Checking remote tmp checksum..."
           REMOTE_TMP_CHECKSUM=""
+          checksum_ok=false
           attempt=1; max_attempts=10; delay=10
           while true; do
-            REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1" 2>&1) && break
+            # Do NOT use 2>&1 here — SSH errors must NOT bleed into the variable
+            if REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1"); then
+              checksum_ok=true
+              break
+            fi
+            REMOTE_TMP_CHECKSUM=""
             if [ "$attempt" -ge "$max_attempts" ]; then
               echo "WARNING: Could not verify checksum after $attempt attempts; proceeding with install anyway (will verify via sqlite3)" >&2
               break
@@ -213,12 +219,16 @@ jobs:
             attempt=$((attempt+1))
             delay=$((delay + 10))
           done
-          
-          if [ -n "$REMOTE_TMP_CHECKSUM" ] && [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
-            echo "ERROR: checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
-            exit 1
+
+          if [ "$checksum_ok" = "true" ]; then
+            if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
+              echo "ERROR: checksum mismatch — remote: $REMOTE_TMP_CHECKSUM, local: $LOCAL_DB_CHECKSUM" >&2
+              exit 1
+            fi
+            echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM (match!)"
+          else
+            echo "Skipped checksum verification; will verify after install via sqlite3"
           fi
-          [ -n "$REMOTE_TMP_CHECKSUM" ] && echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM (match!)" || echo "Skipped checksum verification; will verify after install"
 
           # capture remote install script so it can be re-sent on retries
           REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
