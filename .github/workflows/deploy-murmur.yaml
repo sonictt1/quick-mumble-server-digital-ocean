@@ -234,19 +234,16 @@ jobs:
           
           sudo systemctl stop mumble-server || true
           sudo mkdir -p "$DB_DEST"
-          # Remove any stale journal/wal/shm files left by a previous murmur run before
-          # copying in the repo DB — a leftover -journal causes sqlite3 to see corruption
-          sudo rm -f "$DB_DEST"/mumble-server.sqlite-journal \
-                     "$DB_DEST"/mumble-server.sqlite-wal \
-                     "$DB_DEST"/mumble-server.sqlite-shm
-          for f in /tmp/mumble-server.sqlite*; do
-            if [ -e "$f" ]; then
-              sudo cp -f "$f" "$DB_DEST/$(basename "$f")"
-            fi
-          done
-          sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite* 2>/dev/null || sudo sh -c "chown mumble-server:mumble-server $DB_DEST/mumble-server.sqlite* 2>/dev/null" || true
-          sudo chmod 660 "$DB_DEST"/mumble-server.sqlite* 2>/dev/null || sudo sh -c "chmod 660 $DB_DEST/mumble-server.sqlite* 2>/dev/null" || true
-          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+          # Remove ANY stale files (journal, wal, shm, lock) from previous runs
+          # These can cause sqlite3 to see corruption or lock issues
+          sudo rm -f "$DB_DEST"/mumble-server.sqlite* 
+          # Copy ONLY the main .sqlite file (already checkpointed locally)
+          # Do NOT copy .sqlite-wal or .sqlite-shm; they cause inconsistent state
+          sudo cp -f /tmp/mumble-server.sqlite "$DB_DEST/mumble-server.sqlite"
+          sudo chown mumble-server:mumble-server "$DB_DEST"/mumble-server.sqlite
+          sudo chmod 660 "$DB_DEST"/mumble-server.sqlite
+          
+          # Verify DB is readable and has channels
           CH_TABLE_EXISTS=$(sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='channels';" 2>/dev/null || echo 0)
           if [ "$CH_TABLE_EXISTS" -eq 0 ]; then
             echo "ERROR: 'channels' table not found in DB" >&2
@@ -258,6 +255,10 @@ jobs:
             echo "ERROR: channels count ($CHANNELS) too small; DB may be empty" >&2
             exit 1
           fi
+          
+          # Dump channel names for diagnostics
+          echo "[DB VERIFY] channel names:"
+          sudo -u mumble-server sqlite3 "$DB_DEST/mumble-server.sqlite" "SELECT id, name FROM channels ORDER BY id;" 2>/dev/null | head -20 || true
           rm -f /tmp/mumble-server.sqlite*
           # Ensure the init script will actually start the daemon (Ubuntu package omits START entirely)
           grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || echo 'START=yes' | sudo tee -a /etc/default/mumble-server
