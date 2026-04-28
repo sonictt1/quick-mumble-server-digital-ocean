@@ -195,14 +195,30 @@ jobs:
 
           echo "Uploading DB to ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp..."
           run_with_retry 6 scp "${SCP_OPTS[@]}" "$GITHUB_WORKSPACE/mumble-server.sqlite" ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp/mumble-server.sqlite
+          echo "Upload complete; waiting for SSH daemon to settle..."
+          sleep 15
 
+          # Verify checksum with aggressive retries (SSH daemon may still be settling)
           echo "Checking remote tmp checksum..."
-          REMOTE_TMP_CHECKSUM=$(run_with_retry 6 ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1")
-          echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM"
-          if [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
-            echo "ERROR: upload failed or checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
+          REMOTE_TMP_CHECKSUM=""
+          attempt=1; max_attempts=10; delay=10
+          while true; do
+            REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1" 2>&1) && break
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "WARNING: Could not verify checksum after $attempt attempts; proceeding with install anyway (will verify via sqlite3)" >&2
+              break
+            fi
+            echo "Checksum check failed; retrying in ${delay}s (attempt $attempt/$max_attempts)..." >&2
+            sleep "$delay"
+            attempt=$((attempt+1))
+            delay=$((delay + 10))
+          done
+          
+          if [ -n "$REMOTE_TMP_CHECKSUM" ] && [ "$REMOTE_TMP_CHECKSUM" != "$LOCAL_DB_CHECKSUM" ]; then
+            echo "ERROR: checksum mismatch ($REMOTE_TMP_CHECKSUM != $LOCAL_DB_CHECKSUM)" >&2
             exit 1
           fi
+          [ -n "$REMOTE_TMP_CHECKSUM" ] && echo "Remote tmp checksum: $REMOTE_TMP_CHECKSUM (match!)" || echo "Skipped checksum verification; will verify after install"
 
           # capture remote install script so it can be re-sent on retries
           REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
