@@ -244,15 +244,24 @@ jobs:
             apt-get install -y sqlite3
           fi
 
-          # Let murmur initialise its own DB from the .ini (creates schema + root channel
-          # named from registerName, server_id=1). Stop it cleanly once it has done so.
-          echo "Starting murmur to initialise fresh DB..."
-          sudo systemctl start mumble-server || true
-          sleep 5
+          # Stop murmur so we can safely edit its DB
           sudo systemctl stop mumble-server || true
           sleep 2
 
-          # Verify the live DB now exists and has the channels table
+          # The DB was created by murmur during provisioning (inflate_murmur.sh).
+          # If for any reason it doesn't exist yet, start murmur briefly to create it.
+          if [ ! -f "$LIVE_DB" ]; then
+            echo "DB not found; starting murmur briefly to initialise it..."
+            sudo systemctl start mumble-server || true
+            for i in $(seq 1 12); do
+              sleep 5
+              [ -f "$LIVE_DB" ] && break
+              echo "  waiting for DB... ($((i*5))s)"
+            done
+            sudo systemctl stop mumble-server || true
+            sleep 2
+          fi
+
           if [ ! -f "$LIVE_DB" ]; then
             echo "ERROR: murmur did not create $LIVE_DB" >&2
             exit 1
@@ -276,14 +285,14 @@ jobs:
           #   - Insert channels with channel_id > 0 from repo, forcing the live server_id
           #   - parent_id=0 means "under root", which is always channel_id=0 in live DB
           sudo -u mumble-server sqlite3 "$LIVE_DB" <<SQL
-          ATTACH '/tmp/repo-channels.sqlite' AS repo;
-          DELETE FROM channels WHERE server_id=$LIVE_SERVER_ID AND channel_id > 0;
-          INSERT INTO channels (server_id, channel_id, parent_id, name, inheritacl)
-          SELECT $LIVE_SERVER_ID, channel_id, parent_id, name, inheritacl
-          FROM repo.channels
-          WHERE channel_id > 0;
-          DETACH repo;
-          SQL
+ATTACH '/tmp/repo-channels.sqlite' AS repo;
+DELETE FROM channels WHERE server_id=$LIVE_SERVER_ID AND channel_id > 0;
+INSERT INTO channels (server_id, channel_id, parent_id, name, inheritacl)
+  SELECT $LIVE_SERVER_ID, channel_id, parent_id, name, inheritacl
+  FROM repo.channels
+  WHERE channel_id > 0;
+DETACH repo;
+SQL
 
           echo "[DB VERIFY] channels after graft:"
           sudo -u mumble-server sqlite3 "$LIVE_DB" \
