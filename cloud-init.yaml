@@ -22,6 +22,11 @@ users:
 
 # Configure firewall
 runcmd:
+  # Raise sshd MaxStartups so rapid retry loops don't hit the default cap of 10
+  - sed -i 's/^#*MaxStartups.*/MaxStartups 30:50:100/' /etc/ssh/sshd_config
+  - grep -q '^MaxStartups' /etc/ssh/sshd_config || echo 'MaxStartups 30:50:100' >> /etc/ssh/sshd_config
+  - systemctl reload ssh || systemctl reload sshd
+
   # Configure firewall
   - ufw allow ssh
   - ufw --force enable

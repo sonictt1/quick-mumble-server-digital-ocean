@@ -149,7 +149,7 @@ jobs:
             echo "SSH connection failed; retrying in ${delay}s..." >&2
             sleep "$delay"
             attempt=$((attempt+1))
-            delay=$((delay*2))
+            delay=$(( delay * 2 > 120 ? 120 : delay * 2 ))
           done
 
       - name: Obtain Let's Encrypt certificate

@@ -241,11 +241,13 @@ else
     echo "PROJECT_ID not set; skipping project assignment"
 fi
 # Wait for SSH to be ready (up to 5 minutes)
+backoff=5
 for i in {1..30}; do
     if ssh $SSH_OPTS root@$DROPLET_IP "echo 'SSH ready'" 2>/dev/null; then
         break
     fi
-    sleep 5
+    sleep $backoff
+    backoff=$(( backoff * 2 > 120 ? 120 : backoff * 2 ))
 done
 
 # echo "Murmur server droplet created successfully!"
@@ -421,11 +423,13 @@ EOF
 
 # Wait for the server to come back up after reboot (port 22, admin user).
 sleep 20
+backoff=5
 for i in {1..40}; do
     if ssh $SSH_OPTS "$ADMIN_NAME@$DROPLET_IP" "echo 'SSH ready post-reboot'" 2>/dev/null; then
         break
     fi
-    sleep 5
+    sleep $backoff
+    backoff=$(( backoff * 2 > 120 ? 120 : backoff * 2 ))
 done
 
 # Print droplet ID as the final, machine-parseable output so callers
