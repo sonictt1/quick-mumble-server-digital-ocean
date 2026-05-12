@@ -252,13 +252,34 @@ jobs:
           # If for any reason it doesn't exist yet, start murmur briefly to create it.
           if [ ! -f "$LIVE_DB" ]; then
             echo "DB not found; starting murmur briefly to initialise it..."
-            sudo systemctl start mumble-server || true
+            # Clear any failed-unit state so systemctl start is not a no-op
+            sudo systemctl reset-failed mumble-server || true
+            # Ensure START=yes so the EnvironmentFile gate doesn't block the service
+            grep -q '^START=yes' /etc/default/mumble-server 2>/dev/null || \
+              echo 'START=yes' | sudo tee -a /etc/default/mumble-server >/dev/null
+            sudo systemctl start mumble-server 2>&1 || true
             for i in $(seq 1 12); do
               sleep 5
               [ -f "$LIVE_DB" ] && break
               echo "  waiting for DB... ($((i*5))s)"
             done
-            sudo systemctl stop mumble-server || true
+            if [ ! -f "$LIVE_DB" ]; then
+              echo "systemctl failed to create DB; trying direct binary fallback..." >&2
+              sudo journalctl -u mumble-server -n 40 --no-pager >&2 || true
+              sudo systemctl stop mumble-server || true
+              # Run mumble-server directly as the service user so it can write the DB
+              sudo -u mumble-server /usr/sbin/mumble-server -ini /etc/mumble-server.ini &
+              MURMUR_DIRECT_PID=$!
+              for i in $(seq 1 12); do
+                sleep 5
+                [ -f "$LIVE_DB" ] && break
+                echo "  waiting for DB (direct)... ($((i*5))s)"
+              done
+              kill "$MURMUR_DIRECT_PID" 2>/dev/null || true
+              wait "$MURMUR_DIRECT_PID" 2>/dev/null || true
+            else
+              sudo systemctl stop mumble-server || true
+            fi
             sleep 2
           fi
 
