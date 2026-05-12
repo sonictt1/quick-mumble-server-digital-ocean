@@ -392,8 +392,9 @@ PUBKEY
     chmod 700 /home/$ADMIN_NAME/.ssh
     chmod 600 /home/$ADMIN_NAME/.ssh/authorized_keys
 
-    # Enable passwordless sudo for admin account
+    # Enable passwordless sudo for admin account (no password, no tty requirement)
     echo "$ADMIN_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$ADMIN_NAME
+    echo "Defaults:$ADMIN_NAME !requiretty" >> /etc/sudoers.d/$ADMIN_NAME
     chmod 440 /etc/sudoers.d/$ADMIN_NAME
 
     # Disable root login now that admin user has authorized_keys
