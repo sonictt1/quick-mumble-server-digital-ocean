@@ -205,7 +205,9 @@ jobs:
           attempt=1; max_attempts=10; delay=10
           while true; do
             # Do NOT use 2>&1 here — SSH errors must NOT bleed into the variable
-            if REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1"); then
+            # Use sudo for the remote checksum so the check works even if the uploaded
+            # file is owned by root or otherwise not world-readable.
+            if REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sudo sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1"); then
               checksum_ok=true
               break
             fi
@@ -250,6 +252,12 @@ jobs:
           # Stop murmur before touching the DB
           sudo systemctl stop mumble-server || true
           sleep 2
+
+          # Ensure uploaded repo DB is owned and readable by the admin user for verification
+          if [ -f "$REPO_DB" ]; then
+            sudo chown "$(whoami):$(id -gn)" "$REPO_DB" || true
+            sudo chmod 640 "$REPO_DB" || true
+          fi
 
           # Ensure destination directory exists with correct ownership
           sudo mkdir -p "$DB_DEST"
