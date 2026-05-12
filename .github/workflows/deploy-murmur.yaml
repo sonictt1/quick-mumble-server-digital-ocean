@@ -267,8 +267,9 @@ jobs:
               echo "systemctl failed to create DB; trying direct binary fallback..." >&2
               sudo journalctl -u mumble-server -n 40 --no-pager >&2 || true
               sudo systemctl stop mumble-server || true
-              # Run mumble-server directly as the service user so it can write the DB
-              sudo -u mumble-server /usr/sbin/mumble-server -ini /etc/mumble-server.ini &
+              # Run mumble-server directly as root so it can write the DB;
+              # chown it to mumble-server afterward so the service can open it.
+              sudo /usr/sbin/mumble-server -ini /etc/mumble-server.ini &
               MURMUR_DIRECT_PID=$!
               for i in $(seq 1 12); do
                 sleep 5
@@ -277,6 +278,7 @@ jobs:
               done
               kill "$MURMUR_DIRECT_PID" 2>/dev/null || true
               wait "$MURMUR_DIRECT_PID" 2>/dev/null || true
+              sudo chown mumble-server:mumble-server "$LIVE_DB" 2>/dev/null || true
             else
               sudo systemctl stop mumble-server || true
             fi
@@ -289,15 +291,15 @@ jobs:
           fi
 
           echo "Live DB root channel (before graft):"
-          sudo -u mumble-server sqlite3 "$LIVE_DB" \
+          sudo sqlite3 "$LIVE_DB" \
             "SELECT server_id, channel_id, name FROM channels WHERE channel_id=0;"
 
           # Get the server_id murmur is using in the live DB
-          LIVE_SERVER_ID=$(sudo -u mumble-server sqlite3 "$LIVE_DB" \
+          LIVE_SERVER_ID=$(sudo sqlite3 "$LIVE_DB" \
             "SELECT server_id FROM servers LIMIT 1;")
           echo "Live server_id: $LIVE_SERVER_ID"
 
-          # Copy repo DB to a location the mumble-server user can read
+          # Copy repo DB to a location readable by root
           sudo cp -f "$REPO_DB" /tmp/repo-channels.sqlite
           sudo chmod 644 /tmp/repo-channels.sqlite
 
@@ -305,7 +307,7 @@ jobs:
           #   - Delete any child channels murmur may have auto-created
           #   - Insert channels with channel_id > 0 from repo, forcing the live server_id
           #   - parent_id=0 means "under root", which is always channel_id=0 in live DB
-          sudo -u mumble-server sqlite3 "$LIVE_DB" <<SQL
+          sudo sqlite3 "$LIVE_DB" <<SQL
           ATTACH '/tmp/repo-channels.sqlite' AS repo;
           DELETE FROM channels WHERE server_id=$LIVE_SERVER_ID AND channel_id > 0;
           INSERT INTO channels (server_id, channel_id, parent_id, name, inheritacl)
@@ -316,10 +318,10 @@ jobs:
           SQL
 
           echo "[DB VERIFY] channels after graft:"
-          sudo -u mumble-server sqlite3 "$LIVE_DB" \
+          sudo sqlite3 "$LIVE_DB" \
             "SELECT server_id, channel_id, parent_id, name FROM channels ORDER BY channel_id;"
 
-          CHANNELS=$(sudo -u mumble-server sqlite3 "$LIVE_DB" \
+          CHANNELS=$(sudo sqlite3 "$LIVE_DB" \
             "SELECT count(*) FROM channels WHERE channel_id > 0;")
           echo "[DB VERIFY] child channel count: $CHANNELS"
           if [ "$CHANNELS" -lt 1 ]; then
