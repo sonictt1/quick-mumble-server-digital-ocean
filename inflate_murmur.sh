@@ -64,6 +64,9 @@ MUMBLE_PORT=64738
 
 # Internal configuration variables
 DB_DESTINATION_PATH="/var/lib/mumble-server"
+# Mumble/murmur runtime user/group (keep in sync with `mumble-server.ini` uname)
+MUMBLE_USER="mumble-server"
+MUMBLE_GROUP="mumble-server"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -271,12 +274,12 @@ ssh $SSH_OPTS root@$DROPLET_IP << EOF
     mkdir -p /var/log/mumble-server
 
     # Ensure mumble-server system user exists before chown
-    if ! id -u mumble-server >/dev/null 2>&1; then
-        useradd --system --no-create-home --shell /usr/sbin/nologin mumble-server || true
+    if ! id -u "$MUMBLE_USER" >/dev/null 2>&1; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin "$MUMBLE_USER" || true
     fi
 
-    chown -R mumble-server:mumble-server /var/lib/mumble-server || true
-    chown -R mumble-server:mumble-server /var/log/mumble-server || true
+    chown -R "$MUMBLE_USER:$MUMBLE_GROUP" /var/lib/mumble-server || true
+    chown -R "$MUMBLE_USER:$MUMBLE_GROUP" /var/log/mumble-server || true
     systemctl stop mumble-server || true
     rm -f /var/run/mumble-server/mumble-server.pid /run/mumble-server/mumble-server.pid
 
@@ -285,7 +288,7 @@ ssh $SSH_OPTS root@$DROPLET_IP << EOF
 
     # Ubuntu mumble-server package expects config at /etc/mumble-server.ini (not a subdirectory)
     cp /tmp/mumble-server.ini /etc/mumble-server.ini
-    chown mumble-server /etc/mumble-server.ini || true
+    chown "$MUMBLE_USER:$MUMBLE_GROUP" /etc/mumble-server.ini || true
     chmod 640 /etc/mumble-server.ini || true
     sed -i "s/^port=.*/port=$MUMBLE_PORT/" /etc/mumble-server.ini || true
     # Do NOT start the service here; wait until DB (and any WAL/SHM sidecars) are in place
@@ -330,7 +333,7 @@ if [ -n "$DATABASE_FILE" ]; then
             fi
         done
 
-        chown mumble-server:mumble-server "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
+        chown "$MUMBLE_USER:$MUMBLE_GROUP" "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
         chmod 660 "$DB_DESTINATION_PATH"/mumble-server.sqlite* || true
 
         # Verify the copy succeeded by comparing checksums
@@ -345,7 +348,7 @@ if [ -n "$DATABASE_FILE" ]; then
 
         # Ensure WAL content is checkpointed into the main DB so murmur sees latest state
         if command -v sqlite3 >/dev/null 2>&1; then
-            sudo -u mumble-server sqlite3 "$DB_DESTINATION_PATH/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
+            sudo -u "$MUMBLE_USER" sqlite3 "$DB_DESTINATION_PATH/mumble-server.sqlite" 'PRAGMA wal_checkpoint(FULL);' || true
         fi
 
         # Clean up temporary uploads

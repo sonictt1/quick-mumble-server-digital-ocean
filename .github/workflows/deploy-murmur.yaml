@@ -235,6 +235,9 @@ jobs:
           # capture remote install script so it can be re-sent on retries
           REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
           set -euo pipefail
+          # Runtime variables - keep in sync with `mumble-server.ini` (uname)
+          MUMBLE_USER="mumble-server"
+          MUMBLE_GROUP="mumble-server"
           DB_DEST="/var/lib/mumble-server"
           LIVE_DB="$DB_DEST/mumble-server.sqlite"
           REPO_DB="/tmp/mumble-server.sqlite"
@@ -261,12 +264,12 @@ jobs:
 
           # Ensure destination directory exists with correct ownership
           sudo mkdir -p "$DB_DEST"
-          sudo chown mumble-server:mumble-server "$DB_DEST"
+          sudo chown "$MUMBLE_USER:$MUMBLE_GROUP" "$DB_DEST"
           sudo chmod 750 "$DB_DEST"
 
           # Copy the repo DB directly into place
           sudo cp -f "$REPO_DB" "$LIVE_DB"
-          sudo chown mumble-server:mumble-server "$LIVE_DB"
+          sudo chown "$MUMBLE_USER:$MUMBLE_GROUP" "$LIVE_DB"
           sudo chmod 660 "$LIVE_DB"
 
           echo "[DB VERIFY] DB file at $LIVE_DB:"
