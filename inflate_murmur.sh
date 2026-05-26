@@ -208,21 +208,23 @@ fi
 # Create a Murmur server droplet
 # If an IP is provided, use provided IP. Otherwise create without reserved IP
 
-DROPLET_IP=$(doctl compute droplet create "$DROPLET_NAME" \
+# Create droplet and capture both ID and IP in a single call (avoids issues with duplicate names)
+DROPLET_CREATE_OUTPUT=$(doctl compute droplet create "$DROPLET_NAME" \
         --image "$IMAGE" \
         --size "$SIZE" \
         --region "$REGION" \
         --ssh-keys "$SSH_KEY_ID" \
         --tag-names "murmur-server,created-$(date +%Y-%m-%d),ssh-key-$SSH_KEY_ID,cloud-init,auto-deployed${DOMAIN:+,domain-$DOMAIN}${TAG_APPEND:+,$TAG_APPEND}" \
         --wait \
-        --format PublicIPv4 \
+        --format ID,PublicIPv4 \
         --no-header)
 
-DROPLET_ID=$(doctl compute droplet get $DROPLET_NAME --format ID --no-header | tail -n 1)
+DROPLET_ID=$(echo "$DROPLET_CREATE_OUTPUT" | awk '{print $1}')
+DROPLET_IP=$(echo "$DROPLET_CREATE_OUTPUT" | awk '{print $2}')
 
-
-if [ -z "$DROPLET_ID" ]; then
-    echo "Error: Failed to retrieve droplet ID!"
+if [ -z "$DROPLET_ID" ] || [ -z "$DROPLET_IP" ]; then
+    echo "Error: Failed to retrieve droplet ID or IP from create output!"
+    echo "Create output was: $DROPLET_CREATE_OUTPUT"
     exit 1
 fi
 
