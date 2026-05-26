@@ -1,12 +1,16 @@
 #!/bin/bash
 
-# Usage: ./letsencrypt_cert_script.sh --reserved-ip <RESERVED_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> --ssh-identity-file <SSH_IDENTITY_FILE> --ssh-port <SSH_PORT>
+# Usage: ./letsencrypt_cert_script.sh --droplet-ip <DROPLET_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> --ssh-identity-file <SSH_IDENTITY_FILE> --ssh-port <SSH_PORT>
 
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
         --reserved-ip)
             RESERVED_IP="$2"
+            shift; shift
+            ;;
+        --droplet-ip)
+            DROPLET_IP="$2"
             shift; shift
             ;;
         --droplet-id)
@@ -44,20 +48,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# if [[ -z "$RESERVED_IP" || -z "$DROPLET_ID" || -z "$DOMAIN" || -z "$EMAIL" || -z "$SSH_IDENTITY_FILE" || -z "$SSH_PORT" || -z "$ADMIN_USERNAME" || -z "$SUBDOMAIN" ]]; then
-    echo "RESERVED_IP=$RESERVED_IP"
-    echo "DROPLET_ID=$DROPLET_ID"
-    echo "DOMAIN=$DOMAIN"
-    echo "EMAIL=$EMAIL"
-    echo "SSH_IDENTITY_FILE=$SSH_IDENTITY_FILE"
-    echo "SSH_PORT=$SSH_PORT"
-    echo "ADMIN_USERNAME=$ADMIN_USERNAME"
-    echo "SUBDOMAIN=$SUBDOMAIN"
-    echo "Usage: $0 --reserved-ip <RESERVED_IP> --droplet-id <DROPLET_ID> --domain <DOMAIN> --email <EMAIL> --ssh-identity-file <SSH_IDENTITY_FILE> --ssh-port <SSH_PORT> --admin-username <ADMIN_USERNAME> --subdomain <SUBDOMAIN>"
-    # exit 1
-# fi
-
-DROPLET_IP="$RESERVED_IP"
+DROPLET_IP="${DROPLET_IP:-$RESERVED_IP}"
+echo "RESERVED_IP=$RESERVED_IP"
+echo "DROPLET_IP=$DROPLET_IP"
+echo "DROPLET_ID=$DROPLET_ID"
+echo "DOMAIN=$DOMAIN"
+echo "EMAIL=$EMAIL"
+echo "SSH_IDENTITY_FILE=$SSH_IDENTITY_FILE"
+echo "SSH_PORT=$SSH_PORT"
+echo "ADMIN_USERNAME=$ADMIN_USERNAME"
+echo "SUBDOMAIN=$SUBDOMAIN"
 SSH_OPTS="-i $SSH_IDENTITY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no -T"
 
 ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF

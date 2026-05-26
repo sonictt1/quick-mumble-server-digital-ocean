@@ -35,6 +35,10 @@ on:
         description: 'Subdomain for cert and connecting (e.g., mumble)'
         required: true
         default: 'voice'
+      use_reserved_ip:
+        description: 'Whether to create and use a reserved/floating IP (true/false)'
+        required: false
+        default: 'true'
       email:
         description: 'Email for Lets Encrypt registration'
         required: true
@@ -50,6 +54,7 @@ jobs:
     outputs:
       reserved_ip: ${{ steps.reserve.outputs.reserved_ip }}
       droplet_id: ${{ steps.inflate.outputs.droplet_id }}
+      droplet_ip: ${{ steps.inflate.outputs.droplet_ip }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,6 +80,7 @@ jobs:
 
       - name: Reserve IP and DNS
         id: reserve
+        if: ${{ github.event.inputs.use_reserved_ip == 'true' }}
         run: |
           set -euo pipefail
           echo "Running reserve_ip_dns_record.sh..."
@@ -118,8 +124,11 @@ jobs:
             -l "$MUMBLE_PORT" \
             --verbose \
             --tags "$TAGS" >"$OUTFILE" 2>&1; then
-            DROPLET_ID=$(tail -n 1 "$OUTFILE")
+            # Extract droplet info emitted by the script
+            DROPLET_ID=$(grep -E '^DROPLET_ID=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
+            DROPLET_IP=$(grep -E '^DROPLET_IP=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
             echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+            echo "droplet_ip=$DROPLET_IP" >> $GITHUB_OUTPUT
           else
             echo "inflate_murmur.sh failed; output follows:" >&2
             sed -n '1,400p' "$OUTFILE" >&2 || true
@@ -130,14 +139,20 @@ jobs:
       - name: SSH debug connection
         run: |
           set -euo pipefail
-          echo "Running SSH connectivity test to ${{ github.event.inputs.admin_username }}@${{ steps.reserve.outputs.reserved_ip }}"
+          # Choose target IP: reserved IP if requested, otherwise the droplet's public IP
+          if [ '${{ github.event.inputs.use_reserved_ip }}' = 'true' ]; then
+            TARGET_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          else
+            TARGET_IP='${{ steps.inflate.outputs.droplet_ip }}'
+          fi
+          echo "Running SSH connectivity test to ${ADMIN_USERNAME:=${{ github.event.inputs.admin_username }}}@${TARGET_IP}"
           SSH_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i "$HOME/.ssh/do_ssh_key" -p "${{ github.event.inputs.ssh_port }}" -vvv )
-          
+
           # Retry with backoff in case server is overwhelmed (Exceeded MaxStartups)
           attempt=1; max_attempts=10; delay=5
           while true; do
             echo "SSH connectivity attempt $attempt..."
-            if /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${{ steps.reserve.outputs.reserved_ip }}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1; then
+            if /usr/bin/ssh "${SSH_OPTS[@]}" "${{ github.event.inputs.admin_username }}"@"${TARGET_IP}" 'echo SSH_OK' > /tmp/ssh_debug.txt 2>&1; then
               echo "SSH_OK"
               break
             fi
@@ -153,11 +168,16 @@ jobs:
           done
 
       - name: Obtain Let's Encrypt certificate
-        if: false # temporarily disabled — rate limit reached; cooldown ends 2026-04-27 08:30:32 UTC
         run: |
           set -euo pipefail
-          echo "Requesting cert for mumble.${{ github.event.inputs.domain }} on ${{ steps.reserve.outputs.reserved_ip }}"
-          ./letsencrypt_cert_script.sh --reserved-ip "${{ steps.reserve.outputs.reserved_ip }}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
+          # Determine which IP to target for cert issuance
+          if [ '${{ github.event.inputs.use_reserved_ip }}' = 'true' ]; then
+            TARGET_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          else
+            TARGET_IP='${{ steps.inflate.outputs.droplet_ip }}'
+          fi
+          echo "Requesting cert for ${{ github.event.inputs.subdomain }}.${{ github.event.inputs.domain }} on ${TARGET_IP}"
+          ./letsencrypt_cert_script.sh --droplet-ip "${TARGET_IP}" --droplet-id "${{ steps.inflate.outputs.droplet_id }}" --domain "${{ github.event.inputs.domain }}" --subdomain "${{ github.event.inputs.subdomain }}" --email "${{ github.event.inputs.email }}" --ssh-identity-file "$HOME/.ssh/do_ssh_key" --ssh-port "${{ github.event.inputs.ssh_port }}" --admin-username "${{ github.event.inputs.admin_username }}"
 
       - name: Upload and install sqlite DB
         run: |
@@ -165,7 +185,12 @@ jobs:
           echo "Uploading local DB checksum..."
           LOCAL_DB_CHECKSUM=$(sha256sum "$GITHUB_WORKSPACE/mumble-server.sqlite" | awk '{print $1}')
           echo "Local checksum: $LOCAL_DB_CHECKSUM"
-          RESERVED_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          # Determine which IP to target for uploads/remote actions
+          if [ '${{ github.event.inputs.use_reserved_ip }}' = 'true' ]; then
+            TARGET_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          else
+            TARGET_IP='${{ steps.inflate.outputs.droplet_ip }}'
+          fi
           SSH_PORT='${{ github.event.inputs.ssh_port }}'
           ADMIN_USERNAME='${{ github.event.inputs.admin_username }}'
 
@@ -193,8 +218,8 @@ jobs:
 
           SCP_OPTS=( -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -P "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" )
 
-          echo "Uploading DB to ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp..."
-          run_with_retry 6 scp "${SCP_OPTS[@]}" "$GITHUB_WORKSPACE/mumble-server.sqlite" ${ADMIN_USERNAME}@${RESERVED_IP}:/tmp/mumble-server.sqlite
+          echo "Uploading DB to ${ADMIN_USERNAME}@${TARGET_IP}:/tmp..."
+          run_with_retry 6 scp "${SCP_OPTS[@]}" "$GITHUB_WORKSPACE/mumble-server.sqlite" ${ADMIN_USERNAME}@${TARGET_IP}:/tmp/mumble-server.sqlite
           echo "Upload complete; waiting for SSH daemon to settle..."
           sleep 15
 
@@ -207,7 +232,7 @@ jobs:
             # Do NOT use 2>&1 here — SSH errors must NOT bleed into the variable
             # Use sudo for the remote checksum so the check works even if the uploaded
             # file is owned by root or otherwise not world-readable.
-            if REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} "sudo sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1"); then
+            if REMOTE_TMP_CHECKSUM=$(ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${TARGET_IP} "sudo sha256sum /tmp/mumble-server.sqlite 2>/dev/null | cut -d ' ' -f1"); then
               checksum_ok=true
               break
             fi
@@ -302,7 +327,7 @@ jobs:
           attempt=1; max_attempts=6; delay=5
           while true; do
             echo "Running remote install attempt $attempt..."
-            printf '%s\n' "$REMOTE_SCRIPT" | ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} bash -s && break
+            printf '%s\n' "$REMOTE_SCRIPT" | ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${TARGET_IP} bash -s && break
             if [ "$attempt" -ge "$max_attempts" ]; then
               echo "ERROR: remote install failed after $attempt attempts" >&2
               exit 1
@@ -316,12 +341,17 @@ jobs:
       - name: Diagnose mumble-server state
         run: |
           set -euo pipefail
-          RESERVED_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          # Choose target IP: reserved IP if requested, otherwise the droplet's public IP
+          if [ '${{ github.event.inputs.use_reserved_ip }}' = 'true' ]; then
+            TARGET_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          else
+            TARGET_IP='${{ steps.inflate.outputs.droplet_ip }}'
+          fi
           SSH_PORT='${{ github.event.inputs.ssh_port }}'
           ADMIN_USERNAME='${{ github.event.inputs.admin_username }}'
           MUMBLE_PORT='${{ github.event.inputs.mumble_server_port }}'
           ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 \
-            -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${RESERVED_IP} bash -s <<'DIAG'
+            -p "$SSH_PORT" -i "$HOME/.ssh/do_ssh_key" ${ADMIN_USERNAME}@${TARGET_IP} bash -s <<'DIAG'
           echo "=== systemctl status ==="
           sudo systemctl status mumble-server --no-pager || true
           echo ""
