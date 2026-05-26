@@ -98,22 +98,27 @@ jobs:
         id: inflate
         run: |
           set -euo pipefail
-          echo "Inflating murmur with reserved IP: ${{ steps.reserve.outputs.reserved_ip }}"
-          # Assign GitHub inputs/outputs into shell variables first (prevents literal '$' passing)
           RES_IP='${{ steps.reserve.outputs.reserved_ip }}'
+          USE_RESERVED='${{ github.event.inputs.use_reserved_ip }}'
+          if [ "$USE_RESERVED" = 'true' ] && [ -n "$RES_IP" ]; then
+            echo "Inflating murmur with reserved IP: $RES_IP"
+          else
+            echo "Inflating murmur with droplet public IP (no reserved IP)"
+          fi
+          
           TS='${{ steps.ts.outputs.timestamp }}'
           TAGS="timestamp-$TS"
           SERVER_NAME='${{ github.event.inputs.server_name }}'
           MUMBLE_PORT='${{ github.event.inputs.mumble_server_port }}'
 
           OUTFILE=/tmp/inflate_output.txt
-          # Run script and capture stdout+stderr for debugging; extract last line as droplet ID on success
-          if ./inflate_murmur.sh \
+          
+          # Build the inflate_murmur.sh command, conditionally including --reserved-ip
+          INFLATE_CMD=(./inflate_murmur.sh \
             --region "${{ github.event.inputs.region }}" \
             --image "${{ github.event.inputs.server_image }}" \
             --size "${{ github.event.inputs.server_size }}" \
             --name "$SERVER_NAME" \
-            --reserved-ip "$RES_IP" \
             --admin "${{ github.event.inputs.admin_username }}" \
             --identity "$HOME/.ssh/do_ssh_key" \
             --ssh-port "${{ github.event.inputs.ssh_port }}" \
@@ -123,7 +128,15 @@ jobs:
             --mumble-ini ./mumble-server.ini \
             -l "$MUMBLE_PORT" \
             --verbose \
-            --tags "$TAGS" >"$OUTFILE" 2>&1; then
+            --tags "$TAGS")
+          
+          # Only add --reserved-ip if it's set and use_reserved_ip is true
+          if [ -n "$RES_IP" ]; then
+            INFLATE_CMD+=(--reserved-ip "$RES_IP")
+          fi
+          
+          # Run script and capture stdout+stderr for debugging
+          if "${INFLATE_CMD[@]}" >"$OUTFILE" 2>&1; then
             # Extract droplet info emitted by the script
             DROPLET_ID=$(grep -E '^DROPLET_ID=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
             DROPLET_IP=$(grep -E '^DROPLET_IP=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
