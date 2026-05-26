@@ -361,8 +361,8 @@ if [ -n "$DATABASE_FILE" ]; then
         # Remove any stale PID file — the init script silently exits 0 if it finds one
         rm -f /var/run/mumble-server/mumble-server.pid /run/mumble-server/mumble-server.pid
 
-        # Start the service after the DB is in place
-        systemctl start mumble-server || true
+        # NOTE: Do NOT start the service here. The cert script will start it with proper SSL config.
+        # Starting prematurely causes clients to cache self-signed cert warnings.
 EOF
 fi
     # echo "Database uploaded, ini file updated, and Murmur restarted!"
