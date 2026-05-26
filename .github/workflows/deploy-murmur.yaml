@@ -137,9 +137,14 @@ jobs:
           
           # Run script and capture stdout+stderr for debugging
           if "${INFLATE_CMD[@]}" >"$OUTFILE" 2>&1; then
-            # Extract droplet info emitted by the script
-            DROPLET_ID=$(grep -E '^DROPLET_ID=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
-            DROPLET_IP=$(grep -E '^DROPLET_IP=' "$OUTFILE" | tail -n1 | cut -d'=' -f2-)
+            # Extract droplet info emitted by the script (|| true guards against grep no-match under set -e)
+            DROPLET_ID=$(grep -E '^DROPLET_ID=' "$OUTFILE" | tail -n1 | cut -d'=' -f2- || true)
+            DROPLET_IP=$(grep -E '^DROPLET_IP=' "$OUTFILE" | tail -n1 | cut -d'=' -f2- || true)
+            if [ -z "$DROPLET_ID" ] || [ -z "$DROPLET_IP" ]; then
+              echo "ERROR: Could not parse DROPLET_ID/DROPLET_IP from inflate output:" >&2
+              cat "$OUTFILE" >&2
+              exit 1
+            fi
             echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
             echo "droplet_ip=$DROPLET_IP" >> $GITHUB_OUTPUT
           else

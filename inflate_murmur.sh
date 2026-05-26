@@ -438,9 +438,10 @@ for i in {1..40}; do
     backoff=$(( backoff * 2 > 120 ? 120 : backoff * 2 ))
 done
 
-# Print droplet ID as the final, machine-parseable output so callers
-# (for example CI workflows) can capture it reliably.
-echo "$DROPLET_ID"
+# Print droplet info as machine-parseable KEY=VALUE lines so callers
+# (for example CI workflows) can capture them reliably.
+echo "DROPLET_ID=$DROPLET_ID"
+echo "DROPLET_IP=$DROPLET_IP"
 
 # (authorized_keys already provisioned during remote setup block)
 
