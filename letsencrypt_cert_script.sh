@@ -97,7 +97,7 @@ ssh $SSH_OPTS $ADMIN_USERNAME@$DROPLET_IP <<EOF
         echo "ERROR: certbot failed; SSL paths NOT written to mumble config. Mumble will start without SSL." >&2
     fi
 
-    sudo systemctl start mumble-server || true
+    sudo systemctl restart mumble-server || true
 
     echo "0 3 * * * root certbot renew --quiet && chgrp -R mumble-server /etc/letsencrypt/live/ /etc/letsencrypt/archive/ && chmod -R g+rX /etc/letsencrypt/live/ /etc/letsencrypt/archive/ && systemctl restart mumble-server" | sudo tee /etc/cron.d/murmur-cert-renew
 EOF
